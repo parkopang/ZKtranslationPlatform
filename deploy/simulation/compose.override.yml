@@ -1,0 +1,29 @@
+services:
+  backend:
+    image: translation-platform/test-backend:0.2.2
+    environment:
+      NODE_OPTIONS: --import /simulation/network.mjs
+      SIMULATION_ENV: "true"
+      DB_ENGINE: sqlite
+      DB_PATH: /app/data/translation.sqlite
+      REGISTRATION_MODE: open
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: translation
+      S3_REGION: us-east-1
+      S3_FORCE_PATH_STYLE: "true"
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      COS_ACCESS_KEY: ""
+      COS_SECRET_KEY: ""
+      SIMULATION_MODEL_PROXY: http://host.lima.internal:7891
+      SIMULATION_MODEL_ADDRESS: ${SIMULATION_MODEL_ADDRESS:?set verified provider address}
+    depends_on:
+      redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+  frontend:
+    image: translation-platform/test-frontend:0.2.2
+  nginx:
+    image: translation-platform/test-nginx:0.2.2
+    ports: !override
+      - "127.0.0.1:18082:80"

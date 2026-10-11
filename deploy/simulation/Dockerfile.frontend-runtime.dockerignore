@@ -1,0 +1,6 @@
+*
+!frontend/
+frontend/*
+!frontend/dist/
+!frontend/dist/**
+!frontend/nginx.conf

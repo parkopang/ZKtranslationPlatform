@@ -1,0 +1,4 @@
+ARG BASE_IMAGE=jszt-tcr.tencentcloudcr.com/psp/translation-platform-frontend:0.2.2@sha256:b00c4ac93e7021fecf879a0786f5dfa34bb44675b1c813da610cd61e4787522d
+FROM ${BASE_IMAGE}
+COPY frontend/dist /usr/share/nginx/html
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf

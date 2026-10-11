@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/.env
+backend/data
+deploy/backups/*
+!deploy/backups/.gitkeep
+deploy/nginx/certs/*
+!deploy/nginx/certs/.gitkeep

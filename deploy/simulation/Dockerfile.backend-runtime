@@ -1,0 +1,6 @@
+ARG BASE_IMAGE=jszt-tcr.tencentcloudcr.com/psp/translation-platform-backend:0.2.2@sha256:045e0f993fffdb22bf1b7e36df81a7d26b46bfef33cfed38c88b524a4e60b897
+FROM ${BASE_IMAGE}
+# Dependencies remain the release's Linux dependencies; only compiled JS changes.
+COPY backend/dist /app/dist
+COPY deploy/simulation/package*.json deploy/simulation/network.mjs deploy/simulation/seed.mjs deploy/simulation/fixtures.json /simulation/
+COPY deploy/simulation/node_modules /simulation/node_modules

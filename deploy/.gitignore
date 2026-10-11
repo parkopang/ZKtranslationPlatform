@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+backups/*
+!backups/.gitkeep
+nginx/certs/*.crt
+nginx/certs/*.key

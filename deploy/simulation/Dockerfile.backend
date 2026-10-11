@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY package*.json network.mjs seed.mjs fixtures.json /simulation/
+COPY node_modules /simulation/node_modules

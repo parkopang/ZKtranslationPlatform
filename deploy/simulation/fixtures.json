@@ -1,0 +1,80 @@
+[
+  {
+    "title": "【测试文章】社区志愿者",
+    "sourceLanguage": "English",
+    "targetLanguage": "中文",
+    "translatorSlots": 8,
+    "pairs": [
+      {
+        "source": "Volunteers make our community a better place."
+      },
+      {
+        "source": "Every small action can make a difference."
+      },
+      {
+        "source": "We welcome people from different backgrounds."
+      },
+      {
+        "source": "Clear communication helps teams work together."
+      },
+      {
+        "source": "Please share your ideas with the group."
+      },
+      {
+        "source": "Thank you for contributing your time and skills."
+      }
+    ]
+  },
+  {
+    "title": "【测试文章】数字图书馆",
+    "sourceLanguage": "English",
+    "targetLanguage": "中文",
+    "translatorSlots": 8,
+    "pairs": [
+      {
+        "source": "The library opens its doors to everyone."
+      },
+      {
+        "source": "Readers can search for books on their phones."
+      },
+      {
+        "source": "Digital collections preserve valuable knowledge."
+      },
+      {
+        "source": "Children can discover new stories every week."
+      },
+      {
+        "source": "A quiet space helps people focus on learning."
+      },
+      {
+        "source": "Please try again when the service is busy."
+      }
+    ]
+  },
+  {
+    "title": "【测试文章】城市漫步",
+    "sourceLanguage": "中文",
+    "targetLanguage": "English",
+    "translatorSlots": 8,
+    "pairs": [
+      {
+        "source": "清晨的公园里有许多散步的人。"
+      },
+      {
+        "source": "图书馆旁边新开了一家咖啡店。"
+      },
+      {
+        "source": "我们可以乘坐公交车前往博物馆。"
+      },
+      {
+        "source": "请把可回收物放进对应的垃圾桶。"
+      },
+      {
+        "source": "这座城市欢迎来自世界各地的朋友。"
+      },
+      {
+        "source": "周末可以和朋友一起探索新的街区。"
+      }
+    ]
+  }
+]

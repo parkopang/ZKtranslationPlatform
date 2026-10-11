@@ -1,0 +1,4 @@
+:root{--font-family:"PingFang SC",sans-serif}body{font-family:var(--font-family)}
+.workspace-entry{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;color:#647a9e;background:#eff4fc;border:1px solid #e3eaf6;border-radius:8px;font:12px var(--font-family);text-decoration:none;white-space:nowrap}
+.workspace-entry:hover{color:#3266dc;background:#e5edfc}.workspace-entry:focus-visible{outline:3px solid #8ab0ff;outline-offset:3px}.admin-topbar>.workspace-entry{margin-left:15px}
+@media(max-width:620px){.workspace-entry{font-size:10px;padding:8px}.admin-topbar>.workspace-entry{margin-left:auto}.mobile-topbar .top-actions{gap:4px}}

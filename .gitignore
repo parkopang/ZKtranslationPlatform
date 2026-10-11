@@ -1,0 +1,14 @@
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+backend/data/
+deploy/.env
+deploy/backups/*
+!deploy/backups/.gitkeep
+deploy/offline/*.tar.gz
+deploy/offline/*.sha256
+test-results/
+
+**/.env
+**/.env.*
+!**/.env.example

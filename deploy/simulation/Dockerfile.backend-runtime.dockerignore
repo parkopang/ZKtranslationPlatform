@@ -1,0 +1,16 @@
+*
+!backend/
+backend/*
+!backend/dist/
+!backend/dist/**
+!deploy/
+deploy/*
+!deploy/simulation/
+deploy/simulation/*
+!deploy/simulation/package.json
+!deploy/simulation/package-lock.json
+!deploy/simulation/network.mjs
+!deploy/simulation/seed.mjs
+!deploy/simulation/fixtures.json
+!deploy/simulation/node_modules/
+!deploy/simulation/node_modules/**

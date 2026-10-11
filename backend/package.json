@@ -1,0 +1,49 @@
+{
+  "name": "translation-platform-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "npm run test:model && npm run test:suggestions && npm run test:smoke && npm run test:concurrency && npm run test:article-config && npm run test:task-unit && npm run test:model-failover && npm run test:review && npm run test:sessions && npm run test:registration && npm run test:model-api",
+    "test:smoke": "tsx src/smoke-test.ts",
+    "test:concurrency": "tsx src/concurrency-test.ts",
+    "test:article-config": "tsx src/article-config-test.ts",
+    "test:task-unit": "tsx src/task-unit-test.ts",
+    "test:model-failover": "tsx src/model-failover-test.ts",
+    "test:review": "tsx src/review-workflow-test.ts",
+    "test:sessions": "tsx src/session-isolation-test.ts",
+    "test:registration": "tsx src/registration-allocation-test.ts",
+    "test:model": "tsx src/translation-test.ts",
+    "test:suggestions": "tsx src/suggestions-test.ts",
+    "test:queue": "tsx src/queue-test.ts",
+    "test:model-api": "tsx src/model-api-test.ts",
+    "migrate:sqlite-to-mysql": "node dist/migrate-sqlite-to-mysql.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1144.0",
+    "@aws-sdk/s3-request-presigner": "^3.1144.0",
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^8.3.0",
+    "mammoth": "^1.9.0",
+    "multer": "^2.4.0",
+    "mysql2": "^3.24.5",
+    "redis": "^4.7.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
