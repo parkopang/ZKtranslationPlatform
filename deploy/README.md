@@ -108,18 +108,18 @@ docker compose --profile simulation -p translation-platform-simulation \
 
 ## 5. 尽量离线部署
 
-离线包只需要三个应用镜像（backend、frontend、nginx），因为生产 MySQL、Redis 和 COS 是外部托管服务。联网构建机先登录镜像仓库、拉取或构建已经验收的 0.2.2 镜像，然后生成归档：
+离线包只需要三个应用镜像（backend、frontend、nginx），因为生产 MySQL、Redis 和 COS 是外部托管服务。联网构建机先登录镜像仓库、拉取或构建已经验收的 0.2.4 镜像，然后生成归档：
 
 ```bash
 cd translation-platform/deploy
-IMAGE_BUNDLE_TAG=0.2.3 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
+IMAGE_BUNDLE_TAG=0.2.4 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
 ```
 
-把 `offline/translation-platform-images-0.2.2.tar.gz`、对应 `.sha256`、`.manifest.txt`、`docker-compose.yml`、`.env` 和 `scripts/` 交给运维。机房机器无需访问镜像仓库：
+把 `offline/translation-platform-images-0.2.4.tar.gz`、对应 `.sha256`、`.manifest.txt`、`docker-compose.yml`、`.env` 和 `scripts/` 交给运维。机房机器无需访问镜像仓库：
 
 ```bash
 cd translation-platform/deploy
-IMAGE_BUNDLE_TAG=0.2.3 ENV_FILE=.env bash scripts/start-offline.sh
+IMAGE_BUNDLE_TAG=0.2.4 ENV_FILE=.env bash scripts/start-offline.sh
 ```
 
 脚本会先校验 SHA-256，再 `docker load`，以 `--pull never --no-build` 启动。离线只针对镜像分发；业务运行仍需访问内网 MySQL/Redis、COS 和模型网关。若机房完全隔离外网，需为模型网关和 COS 准备网络出口或企业代理。

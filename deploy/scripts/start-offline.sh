@@ -8,7 +8,7 @@ default_env=.env
 [[ ! -f .env.offline ]] || default_env=.env.offline
 env_file="${ENV_FILE:-$default_env}"
 [[ -f "$env_file" ]] || { echo "请先准备 $env_file。" >&2; exit 1; }
-bundle_tag="${IMAGE_BUNDLE_TAG:-0.2.2}"
+bundle_tag="${IMAGE_BUNDLE_TAG:-0.2.4}"
 archive="${OFFLINE_IMAGE_ARCHIVE:-offline/translation-platform-images-${bundle_tag}.tar.gz}"
 [[ -f "$archive" ]] || { echo "找不到离线镜像包：$archive" >&2; exit 1; }
 

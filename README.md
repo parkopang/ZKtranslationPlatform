@@ -8,7 +8,7 @@
 - `backend/`：Node.js + Express，支持 DOCX/TXT 导入、MySQL/SQLite、Redis 预翻译队列、腾讯 COS、PII 加密、审核版本和报表。
 - `deploy/`：生产 Compose、MySQL/Redis/COS 配置模板、健康检查、模型检查、镜像发布和离线归档脚本。
 
-生产镜像会使用已验收的版本标签（当前发布线为 0.2.3），连接 MySQL `replace-with-database-name`、内网 Redis DB 20、腾讯 COS 和模型主备网关；本机模拟环境通过 Compose `simulation` profile 使用独立 SQLite/Redis/MinIO，不会污染生产数据。完整运维步骤见 [deploy/README.md](deploy/README.md)。
+生产镜像会使用已验收的版本标签（当前发布线为 0.2.4），连接 MySQL `replace-with-database-name`、内网 Redis DB 20、腾讯 COS 和模型主备网关；本机模拟环境通过 Compose `simulation` profile 使用独立 SQLite/Redis/MinIO，不会污染生产数据。完整运维步骤见 [deploy/README.md](deploy/README.md)。
 
 ## 本地开发
 
@@ -73,8 +73,8 @@ ENV_FILE=.env bash scripts/check-model.sh
 离线交付只需要 backend、frontend、nginx 三个应用镜像，外部 MySQL、Redis、COS 和模型网关仍需网络可达：
 
 ```bash
-IMAGE_BUNDLE_TAG=0.2.3 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
-IMAGE_BUNDLE_TAG=0.2.3 ENV_FILE=.env bash scripts/start-offline.sh
+IMAGE_BUNDLE_TAG=0.2.4 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
+IMAGE_BUNDLE_TAG=0.2.4 ENV_FILE=.env bash scripts/start-offline.sh
 ```
 
 模拟环境入口为 `http://localhost:18082/simulation/`，启动方式见 [deploy/simulation/README.md](deploy/simulation/README.md)。
