@@ -476,4 +476,40 @@ await test('GLM transient business codes retry while input and content errors ar
   }
 });
 
+await test('provider-specific policy opens a circuit and exposes the complete fallback chain', async () => {
+  let primaryCalls = 0;
+  let fallbackCalls = 0;
+  const adapter = createModelAdapter({ env: {
+    NODE_ENV: 'test',
+    LLM_PROVIDER_CHAIN: 'bigmodel,openai_compatible,minimax',
+    LLM_RETRY_ATTEMPTS: '8', LLM_MAX_TOKENS: '1', LLM_TOTAL_TIMEOUT_MS: '500',
+    BIGMODEL_KEY_TYPE: 'platform_api', BIGMODEL_API_KEY: 'bigmodel-test-key',
+    BIGMODEL_BASE_URL: 'http://127.0.0.1/api/paas/v4/chat/completions',
+    BIGMODEL_RETRY_ATTEMPTS: '1', BIGMODEL_MAX_TOKENS: '777', BIGMODEL_FAILURE_COOLDOWN_MS: '100',
+    OPENAI_COMPATIBLE_KEY_TYPE: 'platform_api', OPENAI_COMPATIBLE_API_KEY: 'sinohealth-test-key',
+    OPENAI_COMPATIBLE_BASE_URL: 'http://127.0.0.1/v2/openai/completions',
+    OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '1', OPENAI_COMPATIBLE_MAX_TOKENS: '888',
+    MINIMAX_KEY_TYPE: 'platform_api', MINIMAX_API_KEY: 'minimax-test-key',
+    MINIMAX_BASE_URL: 'http://127.0.0.1/v1/chat/completions'
+  }, fetch: async (input, init) => {
+    const body = JSON.parse(String(init?.body));
+    if (String(input).includes('/api/paas/')) {
+      primaryCalls += 1;
+      assert.equal(body.max_tokens, 777);
+      return json({ error: { code: 'capacity_busy' } }, 503);
+    }
+    fallbackCalls += 1;
+    assert.equal(input, 'http://127.0.0.1/v2/openai/completions');
+    assert.equal(body.max_tokens, 888);
+    return json(successful('备用通道译文'));
+  } });
+  const configuration = adapter.getModelConfiguration();
+  assert.equal(configuration.fallback?.provider, 'openai_compatible');
+  assert.equal(configuration.fallback?.fallback?.provider, 'minimax');
+  assert.equal((await adapter.pretranslate('one', '中文')).provider, 'openai_compatible');
+  assert.equal((await adapter.pretranslate('two', '中文')).provider, 'openai_compatible');
+  assert.equal(primaryCalls, 1, 'the open circuit must skip the degraded primary on the next request');
+  assert.equal(fallbackCalls, 2);
+});
+
 console.log(`Model adapter regression tests passed: ${cases} cases.`);

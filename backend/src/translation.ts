@@ -19,7 +19,15 @@ export interface ModelConfiguration {
   configured: boolean;
   error?: string;
   usageWarning?: string;
-  fallback?: { provider: ModelProvider; model: string; configured: boolean; error?: string };
+  fallback?: {
+    provider: ModelProvider;
+    model: string;
+    keyType: string;
+    configured: boolean;
+    error?: string;
+    usageWarning?: string;
+    fallback?: ModelConfiguration['fallback'];
+  };
 }
 
 export interface ModelMetrics {
@@ -74,6 +82,7 @@ function normalizeProvider(value: string | undefined): ModelProvider | undefined
 
 function settingsForProvider(env: Environment, provider: ModelProvider, rawProvider: string = provider): Settings {
   const prefix = provider === 'minimax' ? 'MINIMAX' : provider === 'openai_compatible' ? 'OPENAI_COMPATIBLE' : 'BIGMODEL';
+  const value = (name: string, legacy?: string) => env[`${prefix}_${name}`] ?? env[legacy || `LLM_${name}`];
   const apiKey = env[`${prefix}_API_KEY`]?.trim() || '';
   const keyType = env[`${prefix}_KEY_TYPE`]?.trim().toLowerCase() || 'platform_api';
   const model = env[`${prefix}_MODEL`]?.trim() || (provider === 'minimax' ? 'MiniMax-M2.7' : provider === 'openai_compatible' ? 'plmf/glm-5.3-flash' : 'glm-5.3-flash');
@@ -129,15 +138,15 @@ function settingsForProvider(env: Environment, provider: ModelProvider, rawProvi
   };
   return {
     publicConfiguration, apiKey, url,
-    concurrency: integer(env.LLM_MAX_CONCURRENCY, 2, 1, 32),
-    requestTimeout: integer(env.LLM_REQUEST_TIMEOUT_MS, 30_000, 1, 300_000),
-    totalTimeout: integer(env.LLM_TOTAL_TIMEOUT_MS, 120_000, 1, 600_000),
-    maxTokens: integer(env.LLM_MAX_TOKENS, 4096, 1, 32768),
-    attempts: integer(env.LLM_RETRY_ATTEMPTS ?? env[`${prefix}_RETRY_ATTEMPTS`] ?? env.BIGMODEL_RETRY_ATTEMPTS, 5, 1, 8),
-    retryBase: integer(env.LLM_RETRY_BASE_MS ?? env[`${prefix}_RETRY_BASE_MS`] ?? env.BIGMODEL_RETRY_BASE_MS, 500, 1, 60_000),
-    retryMaximum: integer(env.LLM_RETRY_MAX_MS ?? env[`${prefix}_RETRY_MAX_MS`] ?? env.BIGMODEL_RETRY_MAX_MS, 10_000, 1, 300_000),
-    rateLimitDelay: integer(env.LLM_RATE_LIMIT_DELAY_MS, 60_000, 1, 600_000),
-    failureCooldown: integer(env.LLM_FAILURE_COOLDOWN_MS, 60_000, 0, 600_000)
+    concurrency: integer(value('MAX_CONCURRENCY'), 2, 1, 32),
+    requestTimeout: integer(value('REQUEST_TIMEOUT_MS'), 30_000, 1, 300_000),
+    totalTimeout: integer(value('TOTAL_TIMEOUT_MS'), 120_000, 1, 600_000),
+    maxTokens: integer(value('MAX_TOKENS'), 4096, 1, 32768),
+    attempts: integer(value('RETRY_ATTEMPTS'), 5, 1, 8),
+    retryBase: integer(value('RETRY_BASE_MS'), 500, 1, 60_000),
+    retryMaximum: integer(value('RETRY_MAX_MS'), 10_000, 1, 300_000),
+    rateLimitDelay: integer(value('RATE_LIMIT_DELAY_MS'), 60_000, 1, 600_000),
+    failureCooldown: integer(value('FAILURE_COOLDOWN_MS'), 60_000, 0, 600_000)
   };
 }
 
@@ -152,17 +161,15 @@ function settings(env: Environment): Settings {
     if (!provider) continue;
     const fallback = settingsForProvider(env, provider, rawProvider);
     current.fallback = fallback;
-    if (!primary.publicConfiguration.fallback) {
-      primary.publicConfiguration.fallback = {
-        provider: fallback.publicConfiguration.provider,
-        model: fallback.publicConfiguration.model,
-        configured: fallback.publicConfiguration.configured,
-        ...(fallback.publicConfiguration.error ? { error: fallback.publicConfiguration.error } : {})
-      };
-    }
     current = fallback;
   }
   return primary;
+}
+
+function publicConfigurationFor(settings: Settings): ModelConfiguration {
+  const configuration: ModelConfiguration = { ...settings.publicConfiguration };
+  if (settings.fallback) configuration.fallback = publicConfigurationFor(settings.fallback);
+  return configuration;
 }
 
 function retryAfter(response: Response): number | undefined {
@@ -305,15 +312,16 @@ export function createModelAdapter(options: {
   const random = options.random || Math.random;
   const metrics: ModelMetrics = { requests: 0, totalAttempts: 0, succeeded: 0, failed: 0, retries: 0, inFlight: 0, waiting: 0, maxObservedConcurrency: 0, errorsByCode: {} };
   const waiters: Array<{ start: () => void; limit: number }> = [];
-  const cooldowns = new Map<string, { until: number; failure: Failure }>();
-  const rememberCooldown = (identity: string, failure: Failure, delay: number) => {
+  const cooldowns = new Map<string, { until: number; failure: Failure; circuitOpen: boolean }>();
+  const rememberCooldown = (identity: string, failure: Failure, delay: number, circuitOpen = false) => {
     if (delay <= 0) return;
     if (!cooldowns.has(identity) && cooldowns.size >= 128) cooldowns.delete(cooldowns.keys().next().value!);
     const previous = cooldowns.get(identity);
     const active = previous && previous.until > Date.now() ? previous : undefined;
     cooldowns.set(identity, {
       until: Math.max(Date.now() + delay, active?.until || 0),
-      failure: active && !active.failure.retryable ? active.failure : failure
+      failure: active && !active.failure.retryable ? active.failure : failure,
+      circuitOpen: Boolean(active?.circuitOpen || circuitOpen)
     });
   };
 
@@ -353,12 +361,12 @@ export function createModelAdapter(options: {
 
   const getModelConfiguration = (): ModelConfiguration => {
     const configured = settings(env());
-    const fallback = configured.fallback;
-    const fallbackPublic = fallback?.publicConfiguration;
+    const exposed = publicConfigurationFor(configured);
+    const hasConfiguredProvider = (value: ModelConfiguration): boolean => value.configured || Boolean(value.fallback && hasConfiguredProvider(value.fallback));
     return {
-      ...configured.publicConfiguration,
-      configured: configured.publicConfiguration.configured || Boolean(fallbackPublic?.configured),
-      ...(configured.publicConfiguration.configured || fallbackPublic?.configured ? { error: undefined } : {})
+      ...exposed,
+      configured: hasConfiguredProvider(exposed),
+      ...(hasConfiguredProvider(exposed) ? { error: undefined } : {})
     };
   };
   const assertModelConfiguration = (): void => {
@@ -391,14 +399,21 @@ export function createModelAdapter(options: {
         if (!active.publicConfiguration.configured) { lastFailure = { error: active.publicConfiguration.error || 'invalid_model_configuration', retryable: false }; continue; }
         const identity = createHash('sha256').update(JSON.stringify([active.publicConfiguration.provider, active.url, active.publicConfiguration.model, active.apiKey])).digest('hex');
         const cached = cooldowns.get(identity);
-        if (cached && cached.until > Date.now() && !cached.failure.retryable) { lastFailure = { ...cached.failure, retryAfterMs: cached.until - Date.now() }; continue; }
+        if (cached && cached.until > Date.now() && (cached.circuitOpen || !cached.failure.retryable)) {
+          lastFailure = { ...cached.failure, retryAfterMs: cached.until - Date.now() };
+          continue;
+        }
         for (let attempt = 0; attempt < active.attempts; attempt += 1) {
           let blockedByCooldown = false;
           while (true) {
             const held = cooldowns.get(identity);
             const cooldown = Math.max(0, (held?.until || 0) - Date.now());
             if (!cooldown || !held) break;
-            if (!held.failure.retryable || cooldown >= deadline - Date.now()) { lastFailure = { ...held.failure, retryAfterMs: cooldown }; blockedByCooldown = true; break; }
+            if (held.circuitOpen || !held.failure.retryable || cooldown >= deadline - Date.now()) {
+              lastFailure = { ...held.failure, retryAfterMs: cooldown };
+              blockedByCooldown = true;
+              break;
+            }
             await sleep(cooldown);
           }
           if (blockedByCooldown) break;
@@ -449,6 +464,12 @@ export function createModelAdapter(options: {
           if (attempt + 1 >= active.attempts || delay >= deadline - Date.now()) break;
           metrics.retries += 1;
           await sleep(delay);
+        }
+        // A provider that exhausts transient retries is temporarily opened so
+        // concurrent requests fail over instead of repeatedly hammering the
+        // same degraded upstream. Retry-After remains the lower bound.
+        if (lastFailure.retryable) {
+          rememberCooldown(identity, lastFailure, Math.max(active.failureCooldown, lastFailure.retryAfterMs || 0), true);
         }
         if (Date.now() >= deadline) break;
       }

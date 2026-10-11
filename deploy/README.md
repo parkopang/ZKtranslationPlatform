@@ -71,6 +71,8 @@ BIGMODEL_API_KEY=由密钥管理系统注入
 
 主通道发生超时、429、5xx、网关繁忙/过载、鉴权或配额错误时，系统会先完成该通道自己的有限重试，再在同一次预翻译请求的总超时预算内切换备用通道。备用通道也会独立记录冷却时间、重试次数和错误指标；两个通道都不可用时才把任务标记为失败，志愿者仍可人工提交。`/api/health`、`/api/readyz` 和 `/api/admin/metrics` 会返回主通道及备用通道的脱敏配置状态。
 
+每个通道可以单独调整运行参数，变量名使用供应商前缀，例如 `OPENAI_COMPATIBLE_RETRY_ATTEMPTS`、`BIGMODEL_REQUEST_TIMEOUT_MS`、`BIGMODEL_FAILURE_COOLDOWN_MS`；未设置时继承对应的 `LLM_*` 全局值。某通道耗尽临时故障重试后会进入短暂熔断冷却，冷却期间新请求直接尝试下一通道，避免 10 人并发时持续冲击故障网关；`Retry-After` 仍作为冷却时间下限。鉴权、余额、模型权限和参数错误不会热重试，但会记录通道状态并立即转入备用通道。
+
 启动并验收：
 
 ```bash
@@ -85,7 +87,7 @@ ENV_FILE=.env bash scripts/check-model.sh
 
 ## 3. 模型繁忙与重试
 
-所有模型调用共享并发上限，默认 `LLM_MAX_CONCURRENCY=2`。HTTP 429、5xx、超时、网关返回的 busy/overload/capacity 会遵守 `Retry-After`，按 `LLM_RETRY_ATTEMPTS`、指数退避和总超时预算自动重试；鉴权、余额、模型未授权和参数错误会停止当前通道重试并转入备用通道。Redis 任务也有持久化重试时间，重启后会恢复，不会把原文写成伪译文。
+所有模型调用共享并发上限，默认 `LLM_MAX_CONCURRENCY=2`。HTTP 429、5xx、超时、网关返回的 busy/overload/capacity 会遵守 `Retry-After`，按通道自己的 `*_RETRY_ATTEMPTS`（未设置则使用 `LLM_RETRY_ATTEMPTS`）、指数退避和总超时预算自动重试；鉴权、余额、模型未授权和参数错误会停止当前通道重试并转入备用通道。Redis 任务也有持久化重试时间，重启后会恢复，不会把原文写成伪译文。
 
 本机对用户提供的 Sinohealth Key 已验证网关可访问并返回 HTTP 200；当前网关对 `plmf/glm-5.3-flash` 返回“智能体未授权或不可用”的业务错误。请在部署机执行 `check-model.sh`，若仍出现该错误，需要在模型服务商后台给该 Key 开通模型或确认模型标识，代码不会擅自切换到其他模型。
 
@@ -110,14 +112,14 @@ docker compose --profile simulation -p translation-platform-simulation \
 
 ```bash
 cd translation-platform/deploy
-IMAGE_BUNDLE_TAG=0.2.2 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
+IMAGE_BUNDLE_TAG=0.2.3 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
 ```
 
 把 `offline/translation-platform-images-0.2.2.tar.gz`、对应 `.sha256`、`.manifest.txt`、`docker-compose.yml`、`.env` 和 `scripts/` 交给运维。机房机器无需访问镜像仓库：
 
 ```bash
 cd translation-platform/deploy
-IMAGE_BUNDLE_TAG=0.2.2 ENV_FILE=.env bash scripts/start-offline.sh
+IMAGE_BUNDLE_TAG=0.2.3 ENV_FILE=.env bash scripts/start-offline.sh
 ```
 
 脚本会先校验 SHA-256，再 `docker load`，以 `--pull never --no-build` 启动。离线只针对镜像分发；业务运行仍需访问内网 MySQL/Redis、COS 和模型网关。若机房完全隔离外网，需为模型网关和 COS 准备网络出口或企业代理。
