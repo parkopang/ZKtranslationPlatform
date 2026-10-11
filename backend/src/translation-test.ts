@@ -482,13 +482,13 @@ await test('provider-specific policy opens a circuit and exposes the complete fa
   const adapter = createModelAdapter({ env: {
     NODE_ENV: 'test',
     LLM_PROVIDER_CHAIN: 'bigmodel,openai_compatible,minimax',
-    LLM_RETRY_ATTEMPTS: '8', LLM_MAX_TOKENS: '1', LLM_TOTAL_TIMEOUT_MS: '500',
+    LLM_RETRY_ATTEMPTS: '1', LLM_MAX_TOKENS: '1', LLM_TOTAL_TIMEOUT_MS: '500',
     BIGMODEL_KEY_TYPE: 'platform_api', BIGMODEL_API_KEY: 'bigmodel-test-key',
     BIGMODEL_BASE_URL: 'http://127.0.0.1/api/paas/v4/chat/completions',
-    BIGMODEL_RETRY_ATTEMPTS: '1', BIGMODEL_MAX_TOKENS: '777', BIGMODEL_FAILURE_COOLDOWN_MS: '100',
+    BIGMODEL_RETRY_ATTEMPTS: '', BIGMODEL_MAX_TOKENS: '777', BIGMODEL_FAILURE_COOLDOWN_MS: '100',
     OPENAI_COMPATIBLE_KEY_TYPE: 'platform_api', OPENAI_COMPATIBLE_API_KEY: 'sinohealth-test-key',
     OPENAI_COMPATIBLE_BASE_URL: 'http://127.0.0.1/v2/openai/completions',
-    OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '1', OPENAI_COMPATIBLE_MAX_TOKENS: '888',
+    OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '', OPENAI_COMPATIBLE_MAX_TOKENS: '888',
     MINIMAX_KEY_TYPE: 'platform_api', MINIMAX_API_KEY: 'minimax-test-key',
     MINIMAX_BASE_URL: 'http://127.0.0.1/v1/chat/completions'
   }, fetch: async (input, init) => {

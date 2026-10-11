@@ -82,7 +82,10 @@ function normalizeProvider(value: string | undefined): ModelProvider | undefined
 
 function settingsForProvider(env: Environment, provider: ModelProvider, rawProvider: string = provider): Settings {
   const prefix = provider === 'minimax' ? 'MINIMAX' : provider === 'openai_compatible' ? 'OPENAI_COMPATIBLE' : 'BIGMODEL';
-  const value = (name: string, legacy?: string) => env[`${prefix}_${name}`] ?? env[legacy || `LLM_${name}`];
+  const value = (name: string, legacy?: string) => {
+    const scoped = env[`${prefix}_${name}`]?.trim();
+    return scoped || env[legacy || `LLM_${name}`]?.trim();
+  };
   const apiKey = env[`${prefix}_API_KEY`]?.trim() || '';
   const keyType = env[`${prefix}_KEY_TYPE`]?.trim().toLowerCase() || 'platform_api';
   const model = env[`${prefix}_MODEL`]?.trim() || (provider === 'minimax' ? 'MiniMax-M2.7' : provider === 'openai_compatible' ? 'plmf/glm-5.3-flash' : 'glm-5.3-flash');
