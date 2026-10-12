@@ -27,6 +27,7 @@
 .av-person-name { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .av-person-name strong { color: #35445b; font-size: 12px; overflow-wrap: anywhere; font-weight: 600; }
 .av-person-name small, .av-person-stats small { color: #929bab; font-size: 10px; }
+.av-person-name .av-person-entry { color: #5275b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .av-person-stats { display: grid; gap: 3px; text-align: right; flex-shrink: 0; }
 .av-person-stats > span { color: #768399; font-size: 11px; }
 .av-person-stats b { font-weight: 500; color: #4b5e7d; }

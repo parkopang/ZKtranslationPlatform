@@ -1,13 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Check, CheckCircle2, ClipboardCheck, MessageSquare, RefreshCw, Search, Users, X } from 'lucide-react'
-import { api, groupReviewByVolunteer, taskUnitLabel, type ReviewStatus, type ReviewSubmission } from './api'
+import { api, entryChannelLabel, groupReviewByVolunteer, taskUnitLabel, type ReviewStatus, type ReviewSubmission, type WorkspaceEntryConfig } from './api'
 import './review.css'
 import { reviewLabels, timeLabel } from './review-format'
 import { RevisionHistory } from './RevisionHistory'
 import { useLiveSync } from './useLiveSync'
 const errorText = (error: unknown) => error instanceof Error ? error.message : '操作失败，请稍后重试'
 
-export function Review({ onChanged }: { onChanged: () => void }) {
+export function Review({ onChanged, entries }: { onChanged: () => void; entries: WorkspaceEntryConfig[] }) {
   const [rows, setRows] = useState<ReviewSubmission[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -16,6 +16,7 @@ export function Review({ onChanged }: { onChanged: () => void }) {
   const [article, setArticle] = useState('')
   const [status, setStatus] = useState<ReviewStatus | ''>('pending')
   const [volunteerId, setVolunteerId] = useState('')
+  const [entryCode, setEntryCode] = useState('')
   const [submissionId, setSubmissionId] = useState('')
   const [busy, setBusy] = useState(false)
   const [returning, setReturning] = useState<ReviewSubmission | null>(null)
@@ -26,7 +27,7 @@ export function Review({ onChanged }: { onChanged: () => void }) {
 
   const reviewSync = useLiveSync(true, async ({ signal, isCurrent }) => {
     try {
-      const result = await api.getReviewSubmissions(signal)
+      const result = await api.getReviewSubmissions(signal, entryCode || undefined)
       if (isCurrent()) { setRows(result); setError('') }
     } catch (error) { if (isCurrent()) setError(`${errorText(error)}。将自动重试，当前内容已保留。`) }
     finally { if (isCurrent()) setLoading(false) }
@@ -76,12 +77,12 @@ export function Review({ onChanged }: { onChanged: () => void }) {
   return <div className="admin-content review-workbench">
     <div className="page-header"><div><span className="overline">质量中心</span><h1>志愿者译文审核</h1><p>按志愿者查看贡献，逐个任务单元对比候选译文，将修改意见直接反馈给译者。</p></div><button className="outline-button" disabled={loading || busy} onClick={() => reviewSync.refresh()}><RefreshCw size={15} className={loading ? 'review-spin' : ''} />{loading ? '加载中…' : '刷新译文'}</button></div>
     <div className="review-counts" aria-label="审核状态统计">{(Object.keys(reviewLabels) as ReviewStatus[]).map((key) => <button key={key} className={`review-count ${status === key ? 'active' : ''}`} aria-pressed={status === key} onClick={() => { setStatus(key); setSubmissionId('') }}><span>{reviewLabels[key]}</span><strong>{counts[key]}<small>份</small></strong></button>)}</div>
-    <div className="review-filters"><label className="review-search"><Search size={16} /><span className="review-sr-only">搜索志愿者</span><input type="search" placeholder="搜索志愿者姓名或账号编号" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label><span className="review-sr-only">审核文章筛选</span><select aria-label="审核文章筛选" value={article} onChange={(event) => { setArticle(event.target.value); setSubmissionId('') }}><option value="">全部文章</option>{articleOptions.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></label><label><span className="review-sr-only">审核状态筛选</span><select aria-label="审核状态筛选" value={status} onChange={(event) => { setStatus(event.target.value as ReviewStatus | ''); setSubmissionId('') }}><option value="">全部状态</option>{Object.entries(reviewLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
+    <div className="review-filters"><label className="review-search"><Search size={16} /><span className="review-sr-only">搜索志愿者</span><input type="search" placeholder="搜索志愿者姓名或账号编号" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label><span className="review-sr-only">审核入口筛选</span><select aria-label="审核入口筛选" value={entryCode} onChange={(event) => { setEntryCode(event.target.value); setSubmissionId(''); reviewSync.refresh() }}><option value="">全部入口</option>{entries.map((entry) => <option key={entry.id} value={entry.code}>{entry.name} · {entryChannelLabel(entry.channel)}</option>)}</select></label><label><span className="review-sr-only">审核文章筛选</span><select aria-label="审核文章筛选" value={article} onChange={(event) => { setArticle(event.target.value); setSubmissionId('') }}><option value="">全部文章</option>{articleOptions.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></label><label><span className="review-sr-only">审核状态筛选</span><select aria-label="审核状态筛选" value={status} onChange={(event) => { setStatus(event.target.value as ReviewStatus | ''); setSubmissionId('') }}><option value="">全部状态</option>{Object.entries(reviewLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
     {error && <p className="review-error" role="alert">{error}</p>}{notice && <p className="review-notice" role="status"><CheckCircle2 size={16} />{notice}</p>}
     {loading && !rows.length ? <div className="review-empty" role="status"><RefreshCw size={25} className="review-spin" />正在加载志愿者译文…</div> : <div className="volunteer-review-layout">
       <aside className="panel volunteer-list" aria-label="志愿者列表"><div className="volunteer-list-heading"><Users size={17} /><strong>志愿者</strong><span>{groups.length} 人</span></div>{groups.map((group) => <button key={group.id} className={`volunteer-row ${selectedGroup?.id === group.id ? 'active' : ''}`} aria-pressed={selectedGroup?.id === group.id} onClick={() => { setVolunteerId(group.id); setSubmissionId('') }}><div className="volunteer-identity"><span className="avatar avatar-small">{group.name.slice(0, 1)}</span><div><strong>{group.name}</strong><small title={group.id}>账号 {group.id.slice(0, 8)}</small></div><b>{group.submissions.length} 份</b></div><div className="volunteer-counts"><span>待审 {group.counts.pending}</span><span>采纳 {group.counts.accepted}</span><span>退回 {group.counts.returned}</span><span>未采纳 {group.counts.not_selected}</span></div></button>)}{!groups.length && <div className="review-empty"><Users size={25} /><p>没有符合条件的志愿者译文。</p><button className="text-button" onClick={() => { setSearch(''); setArticle(''); setStatus('') }}>查看全部译文</button></div>}</aside>
       <section className="panel volunteer-submissions" aria-label="志愿者提交详情">{selectedGroup && selected ? <>
-        <div className="volunteer-detail-heading"><div><span className="overline">志愿者提交</span><h2>{selectedGroup.name}</h2><small className="volunteer-full-id">账号 {selectedGroup.id}</small></div><span>{submissions.length} 份译文</span></div>
+        <div className="volunteer-detail-heading"><div><span className="overline">志愿者提交</span><h2>{selectedGroup.name}</h2><small className="volunteer-full-id">账号 {selectedGroup.id}{selected.entryName ? ` · 来源：${selected.entryName}` : selected.entryCode ? ` · 来源：${selected.entryCode}` : ''}</small></div><span>{submissions.length} 份译文</span></div>
         <div className="volunteer-submission-picker"><label htmlFor="review-submission">选择该志愿者的译文</label><select id="review-submission" disabled={busy} value={selected.id} onChange={(event) => setSubmissionId(event.target.value)}>{submissions.map((row) => <option key={row.id} value={row.id}>{row.articleTitle} · 第 {row.position} {taskUnitLabel(row.taskUnit)} · V{row.revision} · {reviewLabels[row.reviewStatus]}</option>)}</select></div>
         {newerVersion && <p className="review-error" role="status">译者已提交 V{latest!.revision}。当前保留你正在查看的 V{selected!.revision}，请阅读新版本后再审核。<button className="text-button" disabled={busy} onClick={() => setInspected(latest!)}>查看最新译文</button></p>}
         <div className="review-document-meta"><strong>{selected.articleTitle}</strong><span>第 {selected.position} {taskUnitLabel(selected.taskUnit)} · {selected.sourceLanguage}<ArrowRight size={12} />{selected.targetLanguage}</span></div>

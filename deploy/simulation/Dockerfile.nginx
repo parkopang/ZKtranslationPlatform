@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=jszt-tcr.tencentcloudcr.com/psp/translation-platform-nginx:0.2.5@sha256:5d30f710cd61b8d09cb61f4ce39f7a577f77dbbddd7eaf48744ee2379dc678eb
+ARG BASE_IMAGE=jszt-tcr.tencentcloudcr.com/psp/translation-platform-nginx:0.2.6@sha256:5d30f710cd61b8d09cb61f4ce39f7a577f77dbbddd7eaf48744ee2379dc678eb
 FROM ${BASE_IMAGE}
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY public /simulation-public

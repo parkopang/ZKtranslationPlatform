@@ -132,8 +132,19 @@ function mysqlSchema(): string {
       bank_card_no TEXT,
       verification_status VARCHAR(20) NOT NULL DEFAULT 'pending',
       verification_source VARCHAR(32) NOT NULL DEFAULT 'unverified',
+      entry_id VARCHAR(36),
       open_id VARCHAR(100) UNIQUE,
       created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    CREATE TABLE IF NOT EXISTS entry_points (
+      id VARCHAR(36) NOT NULL PRIMARY KEY,
+      code VARCHAR(64) NOT NULL UNIQUE,
+      name VARCHAR(200) NOT NULL,
+      channel VARCHAR(32) NOT NULL DEFAULT 'web',
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      url VARCHAR(1024),
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     CREATE TABLE IF NOT EXISTS sessions (
       id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -261,6 +272,7 @@ export function createMysqlDb(): DB {
   const db = new MysqlDatabase(mysqlConfigFromEnv());
   db.exec(mysqlSchema());
   ensureColumn(db, 'users', 'verification_source', "VARCHAR(32) NOT NULL DEFAULT 'unverified'");
+  ensureColumn(db, 'users', 'entry_id', 'VARCHAR(36)');
   ensureColumn(db, 'articles', 'source_object_key', 'VARCHAR(1024)');
   ensureColumn(db, 'articles', 'source_sha256', 'VARCHAR(128)');
   ensureColumn(db, 'articles', 'source_size', 'BIGINT');
@@ -285,6 +297,11 @@ export function createMysqlDb(): DB {
   ensureIndex(db, 'CREATE INDEX idx_translations_status ON translations(status)');
   ensureIndex(db, 'CREATE INDEX idx_translations_sentence_status ON translations(sentence_id, status)');
   ensureIndex(db, 'CREATE UNIQUE INDEX idx_users_phone_hash_unique ON users(phone_hash)');
+  ensureIndex(db, 'CREATE INDEX idx_users_entry ON users(entry_id)');
+  db.prepare(`INSERT IGNORE INTO entry_points (id,code,name,channel,status,url) VALUES (?,?,?,?,?,?)`).run(
+    '00000000-0000-4000-8000-000000000001', 'default', '默认入口', 'web', 'active', null,
+  );
+  db.prepare(`UPDATE users SET entry_id=? WHERE entry_id IS NULL OR entry_id=''`).run('00000000-0000-4000-8000-000000000001');
   ensureIndex(db, 'CREATE INDEX idx_suggestion_retry ON sentences(suggestion_status, suggestion_retry_at)');
   // Repair legacy rows without changing submitted content.
   db.exec(`UPDATE articles SET updated_at=COALESCE(updated_at, created_at) WHERE updated_at IS NULL;

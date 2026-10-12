@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 dir="$(cd "$(dirname "$0")" && pwd)"
-if ! docker image inspect translation-platform/test-backend:0.2.5 >/dev/null 2>&1 || ! docker image inspect translation-platform/test-frontend:0.2.5 >/dev/null 2>&1 || ! docker image inspect translation-platform/test-nginx:0.2.5 >/dev/null 2>&1; then
+if ! docker image inspect translation-platform/test-backend:0.2.6 >/dev/null 2>&1 || ! docker image inspect translation-platform/test-frontend:0.2.6 >/dev/null 2>&1 || ! docker image inspect translation-platform/test-nginx:0.2.6 >/dev/null 2>&1; then
   echo '请先构建测试专用镜像，参见本目录 README。' >&2
   exit 1
 fi

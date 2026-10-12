@@ -4,6 +4,9 @@ export const MAX_ASSIGNEES = 50
 export type RegisteredVolunteer = {
   id: string
   name: string
+  entryCode?: string
+  entryName?: string
+  entryChannel?: string
   assignedCount: number
   activeCount: number
   submittedCount: number
@@ -34,13 +37,13 @@ export function readVolunteers(payload: unknown): RegisteredVolunteer[] {
     }
     // Project only the fields needed for allocating work. Identity and banking
     // details must never enter this component's state or rendered markup.
-    return { id: row.id, name: row.name || '志愿者', assignedCount: row.assignedCount, activeCount: row.activeCount, submittedCount: row.submittedCount, acceptedCount: row.acceptedCount }
+    return { id: row.id, name: row.name || '志愿者', entryCode: typeof row.entryCode === 'string' ? row.entryCode : undefined, entryName: typeof row.entryName === 'string' ? row.entryName : undefined, entryChannel: typeof row.entryChannel === 'string' ? row.entryChannel : undefined, assignedCount: row.assignedCount, activeCount: row.activeCount, submittedCount: row.submittedCount, acceptedCount: row.acceptedCount }
   })
 }
 
 export function filterVolunteers(volunteers: RegisteredVolunteer[], search: string) {
   const query = search.trim().toLocaleLowerCase()
-  return query ? volunteers.filter((volunteer) => `${volunteer.name} ${volunteer.id}`.toLocaleLowerCase().includes(query)) : volunteers
+  return query ? volunteers.filter((volunteer) => `${volunteer.name} ${volunteer.id} ${volunteer.entryCode || ''} ${volunteer.entryName || ''}`.toLocaleLowerCase().includes(query)) : volunteers
 }
 
 export function validateAllocationSelection(userIds: string[], count: number): void {

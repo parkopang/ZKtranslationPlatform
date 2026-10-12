@@ -7,7 +7,7 @@ set -euo pipefail
 registry="${REGISTRY_HOST:-jszt-tcr.tencentcloudcr.com}"
 namespace="${REGISTRY_NAMESPACE:-psp}"
 prefix="${REGISTRY_REPOSITORY_PREFIX:-translation-platform}"
-tag="${IMAGE_TAG:-0.2.5}"
+tag="${IMAGE_TAG:-0.2.6}"
 
 local_backend="${SOURCE_BACKEND_IMAGE:-translation-platform/backend:${tag}}"
 local_frontend="${SOURCE_FRONTEND_IMAGE:-translation-platform/frontend:${tag}}"

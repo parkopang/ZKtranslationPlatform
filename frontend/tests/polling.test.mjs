@@ -85,6 +85,8 @@ test('explicit workspace role wins over the remembered role', async () => {
   assert.deepEqual(entry('?entry=doctor&channel=public-account', '/'), { role: 'translator', isDoctor: true, channel: 'wechat-public-account' })
   assert.deepEqual(entry('?entry=official-account', '/'), { role: 'translator', isDoctor: true, channel: 'wechat-public-account' })
   assert.deepEqual(entry('?entry=miniprogram', '/'), { role: 'translator', isDoctor: true, channel: 'wechat-mini-program' })
+  assert.deepEqual(entry('?entry=east-public&channel=public-account', '/doctor'), { role: 'translator', isDoctor: true, channel: 'wechat-public-account', entryCode: 'east-public' })
+  assert.deepEqual(entry('?entry=south-mini&channel=mini-program', '/doctor'), { role: 'translator', isDoctor: true, channel: 'wechat-mini-program', entryCode: 'south-mini' })
   assert.deepEqual(entry('', '/doctor/'), { role: 'translator', isDoctor: true, channel: 'web' })
   assert.deepEqual(entry('?workspace=admin&entry=doctor', '/doctor'), { role: 'admin', isDoctor: true, channel: 'web' })
 })

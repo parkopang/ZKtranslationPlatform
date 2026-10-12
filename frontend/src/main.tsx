@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Clock3, ExternalLink, FileText, Globe2, LayoutDashboard, Menu, MoreHorizontal, Plus,
   Search, Settings2, ShieldCheck, Sparkles, UploadCloud, Users, X,
 } from 'lucide-react'
-import { api, isDemo, mockArticles, mockSegments, setAdminKey, taskDraftKey, taskEditable, taskUnitLabel, type Article, type Segment, type TaskUnit } from './api'
+import { api, entryChannelLabel, isDemo, mockArticles, mockSegments, setAdminKey, taskDraftKey, taskEditable, taskUnitLabel, type Article, type Segment, type TaskUnit, type WorkspaceEntryConfig } from './api'
 import './styles.css'
 import { Articles } from './Articles'
 import { Review } from './Review'
@@ -14,9 +14,10 @@ import { RevisionHistory } from './RevisionHistory'
 import { TaskResults } from './TaskResults'
 import { useLiveSync } from './useLiveSync'
 import { workspaceEntry, workspaceRole, type WorkspaceChannel } from './workspace'
+import { EntryManagement } from './EntryManagement'
 
 type Mode = 'translator' | 'admin'
-type AdminSection = 'overview' | 'articles' | 'segments' | 'reports'
+type AdminSection = 'overview' | 'articles' | 'segments' | 'reports' | 'entries'
 type ReportSummary = { sentenceCount: number; pending: number; translated: number; accepted: number; contributors: number; accuracy: number; topContributors?: Array<{ name: string; acceptedCount: number; submittedCount: number }> }
 
 const todayLabel = new Intl.DateTimeFormat('zh-CN', { weekday: 'short', month: 'numeric', day: 'numeric' }).format(new Date()).replace('星期', '周')
@@ -26,6 +27,8 @@ function App() {
   const [mode, setMode] = useState<Mode>(() => workspaceRole(window.location.search, sessionStorage.getItem('zk_workspace'), window.location.pathname))
   const entry = workspaceEntry(window.location.search, window.location.pathname)
   const [adminSection, setAdminSection] = useState<AdminSection>('overview')
+  const [entryConfigs, setEntryConfigs] = useState<WorkspaceEntryConfig[]>(isDemo ? [] : [])
+  const [entryConfigError, setEntryConfigError] = useState('')
   const [tasks, setTasks] = useState<Segment[]>(isDemo ? mockSegments.slice(0, 3) : [])
   const [segments, setSegments] = useState<Segment[]>(isDemo ? mockSegments : [])
   const [articles, setArticles] = useState<Article[]>(isDemo ? mockArticles : [])
@@ -70,7 +73,7 @@ function App() {
       setIdentityVerified(Boolean(user))
       if (user) {
         localStorage.setItem('zk_registered', '1')
-        localStorage.setItem('zk_user', JSON.stringify({ id: user.id, name: user.name, realName: user.realName }))
+        localStorage.setItem('zk_user', JSON.stringify({ id: user.id, name: user.name, realName: user.realName, entryCode: user.entryCode || null, entryName: user.entryName || null, entryChannel: user.entryChannel || null }))
       } else { localStorage.removeItem('zk_registered'); localStorage.removeItem('zk_user') }
       if (identity.current !== (user?.id || null)) {
         identity.current = user?.id || null
@@ -86,11 +89,11 @@ function App() {
 
   const adminSync = useLiveSync(mode === 'admin' && !isDemo, async ({ signal, isCurrent }) => {
     try {
-      const results = await Promise.allSettled([api.getArticles(signal), api.getSummary(signal), api.getSegments(signal)])
+      const results = await Promise.allSettled([api.getArticles(signal), api.getSummary(signal), api.getSegments(signal), api.getEntryConfigs(signal)])
       const failure = results.find((result) => result.status === 'rejected')
       if (failure?.status === 'rejected') throw failure.reason
-      const [items, report, pending] = results.map((result) => result.status === 'fulfilled' ? result.value : null) as [Article[], ReportSummary, Segment[]]
-      if (isCurrent()) { setArticles(items); setSummary(report as ReportSummary); setSegments(pending); setLoadError('') }
+      const [items, report, pending, entries] = results.map((result) => result.status === 'fulfilled' ? result.value : null) as [Article[], ReportSummary, Segment[], WorkspaceEntryConfig[]]
+      if (isCurrent()) { setArticles(items); setSummary(report as ReportSummary); setSegments(pending); setEntryConfigs(entries); setEntryConfigError(''); setLoadError('') }
     } catch (error) { if (isCurrent()) setLoadError(error instanceof Error ? `后台同步失败：${error.message}。将自动重试。` : '后台数据同步失败，将自动重试。') }
   }, mode)
 
@@ -143,8 +146,8 @@ function App() {
     setToast(`文章已导入并按${taskUnitLabel(taskUnit)}拆分，可开始协作翻译`)
   }
 
-  const exportReport = async () => {
-    try { await api.exportReport(); setToast('报表已下载') } catch (error) { setToast(error instanceof Error ? error.message : '报表下载失败') }
+  const exportReport = async (entryCode?: string) => {
+    try { await api.exportReport(entryCode); setToast('报表已下载') } catch (error) { setToast(error instanceof Error ? error.message : '报表下载失败') }
   }
 
   const logout = async () => {
@@ -165,9 +168,9 @@ function App() {
   return (
     <div className="app-root">
       {mode === 'translator' ? (
-        <TranslatorView key={translatorSession} authenticated={identityVerified} tasks={identityVerified ? tasks : []} drafts={identityVerified ? drafts : {}} onDraft={(id, text) => setDrafts((current) => ({ ...current, [id]: text }))} selectedTaskId={selectedTaskId} onSelect={setSelectedTaskId} onSubmit={submit} onClaim={claimTasks} onRegistrationStart={() => taskSync.pause()} onRegistrationEnd={() => taskSync.resume()} onRegistered={() => taskSync.refresh()} onSwitch={() => void enterAdmin()} onLogout={() => void logout()} loading={loading} isDoctor={entry.isDoctor} channel={entry.channel} />
+        <TranslatorView key={translatorSession} authenticated={identityVerified} tasks={identityVerified ? tasks : []} drafts={identityVerified ? drafts : {}} onDraft={(id, text) => setDrafts((current) => ({ ...current, [id]: text }))} selectedTaskId={selectedTaskId} onSelect={setSelectedTaskId} onSubmit={submit} onClaim={claimTasks} onRegistrationStart={() => taskSync.pause()} onRegistrationEnd={() => taskSync.resume()} onRegistered={() => taskSync.refresh()} onSwitch={() => void enterAdmin()} onLogout={() => void logout()} loading={loading} isDoctor={entry.isDoctor} channel={entry.channel} entryCode={entry.entryCode} />
       ) : (
-        <AdminView section={adminSection} setSection={setAdminSection} segments={segments} articles={articles} summary={summary} onRefreshArticles={() => adminSync.refresh()} onArticleUpdated={articleUpdated} onReviewChanged={reviewChanged} onImport={importArticle} onExport={exportReport} onSwitch={() => { setIdentityVerified(isDemo); setLoading(!isDemo); setMode('translator') }} />
+        <AdminView section={adminSection} setSection={setAdminSection} segments={segments} articles={articles} summary={summary} entries={entryConfigs} entryError={entryConfigError} onEntryChanged={(updated) => setEntryConfigs((current) => { const index = current.findIndex((item) => item.id === updated.id); return index < 0 ? [updated, ...current] : current.map((item) => item.id === updated.id ? updated : item) })} onRefreshArticles={() => adminSync.refresh()} onArticleUpdated={articleUpdated} onReviewChanged={reviewChanged} onImport={importArticle} onExport={exportReport} onSwitch={() => { setIdentityVerified(isDemo); setLoading(!isDemo); setMode('translator') }} />
       )}
       {loadError && <div className="error-banner" role="status">{loadError}</div>}
       {toast && <div className="toast" role="status"><CheckCircle2 size={17} />{toast}</div>}
@@ -179,12 +182,13 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return <div className={`brand ${compact ? 'brand-compact' : ''}`}><span className="brand-mark"><Globe2 size={20} strokeWidth={2.4} /></span><span><b>译链</b>{!compact && <small>众人共译平台</small>}</span></div>
 }
 
-function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId, onSelect, onSubmit, onClaim, onRegistered, onRegistrationStart, onRegistrationEnd, onSwitch, onLogout, loading, isDoctor, channel }: { authenticated: boolean; tasks: Segment[]; drafts: Record<string, string>; onDraft: (key: string, text: string) => void; selectedTaskId: string | null; onSelect: (id: string) => void; onSubmit: (id: string, text: string, expectedRevision: number) => Promise<void>; onClaim: () => Promise<Segment[]>; onRegistered: () => void; onRegistrationStart: () => void; onRegistrationEnd: () => void; onSwitch: () => void; onLogout: () => void; loading: boolean; isDoctor: boolean; channel: WorkspaceChannel }) {
+function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId, onSelect, onSubmit, onClaim, onRegistered, onRegistrationStart, onRegistrationEnd, onSwitch, onLogout, loading, isDoctor, channel, entryCode }: { authenticated: boolean; tasks: Segment[]; drafts: Record<string, string>; onDraft: (key: string, text: string) => void; selectedTaskId: string | null; onSelect: (id: string) => void; onSubmit: (id: string, text: string, expectedRevision: number) => Promise<void>; onClaim: () => Promise<Segment[]>; onRegistered: () => void; onRegistrationStart: () => void; onRegistrationEnd: () => void; onSwitch: () => void; onLogout: () => void; loading: boolean; isDoctor: boolean; channel: WorkspaceChannel; entryCode?: string }) {
   const [view, setView] = useState<'work' | 'results'>('work')
   const [showProfile, setShowProfile] = useState(false)
   const [registered, setRegistered] = useState(() => localStorage.getItem('zk_registered') === '1')
   const [showRegister, setShowRegister] = useState(false)
   const [registrationMode, setRegistrationMode] = useState<'open' | 'standard' | null>(null)
+  const [registrationEntry, setRegistrationEntry] = useState<WorkspaceEntryConfig | null>(null)
   const [registrationAttempt, setRegistrationAttempt] = useState(0)
   const [registrationConfigError, setRegistrationConfigError] = useState('')
   const [claiming, setClaiming] = useState(false)
@@ -223,9 +227,9 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
     if (!showRegister) return
     let active = true
     setRegistrationConfigError('')
-    void api.registrationConfig().then((config) => { if (active) setRegistrationMode(config.mode) }).catch((error) => { if (active) setRegistrationConfigError(error instanceof Error ? error.message : '注册设置加载失败') })
+    void api.registrationConfig(entryCode, channel).then((config) => { if (active) { setRegistrationMode(config.mode); setRegistrationEntry(config.entry || null) } }).catch((error) => { if (active) { setRegistrationEntry(null); setRegistrationConfigError(error instanceof Error ? error.message : '注册设置加载失败') } })
     return () => { active = false }
-  }, [showRegister, registrationAttempt])
+  }, [showRegister, registrationAttempt, entryCode, channel])
 
   useEffect(() => {
     if (!selectedTaskId && tasks.length) onSelect((tasks.find((item) => item.reviewStatus === 'returned' && !item.closed) || tasks.find(taskEditable) || tasks[0]).id)
@@ -264,9 +268,9 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
     onRegistrationStart()
     setRegisterError('')
     try {
-      const result = await api.register({ realName: realName.trim(), phone: phone.trim(), idNumber: idNumber.trim(), bankCardNo: bankCardNo.trim() })
+      const result = await api.register({ realName: realName.trim(), phone: phone.trim(), idNumber: idNumber.trim(), bankCardNo: bankCardNo.trim(), ...(entryCode ? { entryCode, entryChannel: channel } : {}) })
       localStorage.setItem('zk_registered', '1')
-      localStorage.setItem('zk_user', JSON.stringify({ id: result.user.id, realName: result.user.realName, name: result.user.name }))
+      localStorage.setItem('zk_user', JSON.stringify({ id: result.user.id, realName: result.user.realName, name: result.user.name, entryCode: result.user.entryCode || registrationEntry?.code || entryCode || null, entryName: result.user.entryName || registrationEntry?.name || null, entryChannel: result.user.entryChannel || registrationEntry?.channel || channel || null }))
       setRegistered(true)
       setShowRegister(false)
       const url = new URL(window.location.href); url.searchParams.delete('register'); window.history.replaceState(null, '', url)
@@ -288,7 +292,7 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
     <main className="translator-content">
       <div className="translator-view-tabs" aria-label="我的工作区"><button className={view === 'work' ? 'active' : ''} aria-pressed={view === 'work'} onClick={() => setView('work')}>翻译任务</button><button className={view === 'results' ? 'active' : ''} aria-pressed={view === 'results'} onClick={() => setView('results')}>我的数据与审核结果{tasks.some((item) => item.reviewStatus === 'returned' && !item.closed) && <i />}</button></div>
       {view === 'results' ? <TaskResults tasks={tasks} onOpen={(id) => { onSelect(id); setView('work'); setTaskError('') }} /> : <>
-      <div className="welcome-line"><div><p className="eyebrow">{isDoctor ? '医生协作入口 · ' : ''}{todayLabel}</p><h1>{isDoctor ? '欢迎进入医生端' : `早上好，${displayName}`} <span>👋</span></h1>{isDoctor && <p className="entry-description">从微信菜单进入，登录后即可领取分配给你的翻译任务。</p>}</div><div className="streak"><span>✦</span><b>{liveApi ? '我的任务' : '连续 7 天'}</b><small>{liveApi ? `${completedToday} 个任务已提交` : '+12 积分'}</small></div></div>
+      <div className="welcome-line"><div><p className="eyebrow">{isDoctor ? '医生协作入口 · ' : ''}{todayLabel}</p><h1>{isDoctor ? '欢迎进入医生端' : `早上好，${displayName}`} <span>👋</span></h1>{isDoctor && <p className="entry-description">从微信菜单进入，登录后即可领取分配给你的翻译任务。</p>}{(entryCode || registrationEntry) && <span className="entry-source-badge">来源入口：{registrationEntry?.name || entryCode}{registrationEntry?.channel && ` · ${entryChannelLabel(registrationEntry.channel)}`}</span>}</div><div className="streak"><span>✦</span><b>{liveApi ? '我的任务' : '连续 7 天'}</b><small>{liveApi ? `${completedToday} 个任务已提交` : '+12 积分'}</small></div></div>
       <section className="progress-card">
         <div className="progress-heading"><div><span className="overline">{liveApi ? '按任务去重统计' : '今日任务'}</span><strong>累计提交</strong></div><b>{completedToday} <i>/ {taskGoal} 个任务</i></b></div>
         <div className="progress-track"><span style={{ width: `${progressPercent}%` }} /></div>
@@ -337,7 +341,7 @@ function AiSuggestion({ task }: { task: Segment }) {
   return <p className={`ai-text ${task.aiStatus === 'failed' ? 'ai-error' : ''}`} role="status" aria-live="polite">{message}</p>
 }
 
-function AdminView({ section, setSection, segments, articles, summary, onRefreshArticles, onArticleUpdated, onReviewChanged, onImport, onExport, onSwitch }: { section: AdminSection; setSection: (value: AdminSection) => void; segments: Segment[]; articles: Article[]; summary: ReportSummary | null; onRefreshArticles: () => void; onArticleUpdated: (article: Article) => void; onReviewChanged: () => void; onImport: (title: string, language: string, sourceLanguage?: string, taskUnit?: TaskUnit, slots?: number, file?: File | null) => Promise<void>; onExport: () => Promise<void>; onSwitch: () => void }) {
+function AdminView({ section, setSection, segments, articles, summary, entries, entryError, onEntryChanged, onRefreshArticles, onArticleUpdated, onReviewChanged, onImport, onExport, onSwitch }: { section: AdminSection; setSection: (value: AdminSection) => void; segments: Segment[]; articles: Article[]; summary: ReportSummary | null; entries: WorkspaceEntryConfig[]; entryError?: string; onEntryChanged: (entry: WorkspaceEntryConfig) => void; onRefreshArticles: () => void; onArticleUpdated: (article: Article) => void; onReviewChanged: () => void; onImport: (title: string, language: string, sourceLanguage?: string, taskUnit?: TaskUnit, slots?: number, file?: File | null) => Promise<void>; onExport: (entryCode?: string) => Promise<void>; onSwitch: () => void }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pendingCount = summary?.pending ?? segments.reduce((sum, item) => sum + (item.submissions?.length || 0), 0)
   const navItems: { id: AdminSection; label: string; icon: typeof LayoutDashboard; count?: string }[] = [
@@ -345,6 +349,7 @@ function AdminView({ section, setSection, segments, articles, summary, onRefresh
     { id: 'articles', label: '文章管理', icon: BookOpen, count: articles.length ? String(articles.length) : undefined },
     { id: 'segments', label: '翻译审核', icon: ClipboardCheck, count: pendingCount ? String(pendingCount) : undefined },
     { id: 'reports', label: '数据报表', icon: BarChart3 },
+    { id: 'entries', label: '微信入口', icon: ExternalLink },
   ]
   return <div className="admin-layout">
     <aside className={`admin-sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -358,8 +363,9 @@ function AdminView({ section, setSection, segments, articles, summary, onRefresh
       <header className="admin-topbar"><button className="mobile-menu" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button><div className="breadcrumbs"><span>中康翻译工作室</span><ChevronRight /><b>{navItems.find((item) => item.id === section)?.label}</b></div><div className="topbar-right"><div className="search-box"><Search size={16} /><input placeholder="搜索文章、译者…" /></div><button className="icon-button notification"><Activity size={18} /><i /></button><button className="switch-link" onClick={onSwitch}>切换译者端 <ArrowRight size={15} /></button></div></header>
       {section === 'overview' && <Overview articles={articles} segments={segments} summary={summary} onNavigate={setSection} />}
       {section === 'articles' && <Articles articles={articles} onImport={onImport} onRefresh={onRefreshArticles} onArticleUpdated={onArticleUpdated} />}
-      {section === 'segments' && <Review onChanged={onReviewChanged} />}
-      {section === 'reports' && <Reports articles={articles} segments={segments} summary={summary} onExport={onExport} />}
+      {section === 'segments' && <Review onChanged={onReviewChanged} entries={entries} />}
+      {section === 'reports' && <Reports articles={articles} segments={segments} summary={summary} entries={entries} onExport={onExport} />}
+      {section === 'entries' && <EntryManagement entries={entries} error={entryError} onChanged={onEntryChanged} />}
     </section>
   </div>
 }
@@ -386,11 +392,19 @@ function ActivityItem({ color, title, meta }: { color: string; title: string; me
 
 function ArticleTable({ articles, showActions = false }: { articles: Article[]; showActions?: boolean }) { return <div className="table-wrap"><table><thead><tr><th>文章</th><th>语种</th><th>任务单元进度</th><th>状态</th><th>最近更新</th>{showActions && <th />}</tr></thead><tbody>{articles.map((article) => <tr key={article.id}><td><div className="article-cell"><span className="file-icon"><FileText size={17} /></span><div><strong>{article.title}</strong><small>{article.id.toUpperCase()}</small></div></div></td><td><span className="language-pill">{article.sourceLanguage} <ArrowRight size={12} /> {article.targetLanguage}</span></td><td><div className="table-progress"><div><span>{article.done}</span> / {article.segments || '待解析'} {taskUnitLabel(article.taskUnit)}</div><div className="mini-progress"><span style={{ width: `${article.segments ? (article.done / article.segments) * 100 : 0}%` }} /></div></div></td><td><span className={`status-pill ${article.status === '进行中' ? 'progress' : article.status === '已完成' ? 'done' : 'draft'}`}><i />{article.status}</span></td><td className="muted-cell">{article.updatedAt}</td>{showActions && <td><button className="more-button"><MoreHorizontal size={18} /></button></td>}</tr>)}</tbody></table></div> }
 
-function Reports({ articles, segments, summary, onExport }: { articles: Article[]; segments: Segment[]; summary: ReportSummary | null; onExport: () => Promise<void> }) {
-  const total = summary?.sentenceCount ?? articles.reduce((sum, item) => sum + item.segments, 0)
-  const report: ReportSummary | null = summary || (isDemo ? { sentenceCount: 90, pending: 12, translated: 128, accepted: 103, contributors: 36, accuracy: 92 } : null)
+function Reports({ articles, segments, summary, entries, onExport }: { articles: Article[]; segments: Segment[]; summary: ReportSummary | null; entries: WorkspaceEntryConfig[]; onExport: (entryCode?: string) => Promise<void> }) {
+  const [entryCode, setEntryCode] = useState('')
+  const [scopedSummary, setScopedSummary] = useState<ReportSummary | null>(summary)
+  const [loadError, setLoadError] = useState('')
+  const reportSync = useLiveSync(!isDemo, async ({ signal, isCurrent }) => {
+    try { const next = await api.getSummary(signal, entryCode || undefined); if (isCurrent()) { setScopedSummary(next); setLoadError('') } }
+    catch (error) { if (isCurrent()) setLoadError(error instanceof Error ? error.message : '报表加载失败') }
+  }, entryCode)
+  useEffect(() => { if (isDemo) setScopedSummary(summary); else reportSync.refresh() }, [entryCode, summary])
+  const report: ReportSummary | null = scopedSummary || (isDemo ? { sentenceCount: 90, pending: 12, translated: 128, accepted: 103, contributors: 36, accuracy: 92 } : null)
+  const total = report?.sentenceCount ?? articles.reduce((sum, item) => sum + item.segments, 0)
   const contributors = report?.topContributors || []
-  return <div className="admin-content"><PageHeader eyebrow="数据中心" title="数据报表" description="查看项目进度、贡献者活跃度与译文采纳情况。" action={<button className="outline-button" onClick={() => void onExport()}><FileText size={16} />导出报表</button>} /><div className="stats-grid report-stats"><StatCard label="总句段数" value={String(total || 0)} trend="当前文章总量" icon={<FileText />} tone="blue" /><StatCard label="已提交" value={report ? String(report.translated) : '—'} trend="同一句可有多人提交" icon={<CheckCircle2 />} tone="green" /><StatCard label="参与人数" value={report ? String(report.contributors) : '—'} trend="已提交译文的译者" icon={<Users />} tone="purple" /><StatCard label="译文采纳率" value={report ? `${report.accuracy}%` : '—'} trend="已采纳句段 / 已提交译文" icon={<Sparkles />} tone="orange" /></div><div className="report-grid"><section className="panel chart-panel large"><div className="panel-header"><div><h3>每日翻译量</h3><p>过去 30 天句段提交趋势</p></div><button className="select-button">近 30 天 <ChevronDown size={15} /></button></div>{isDemo ? <div className="area-chart"><div className="area-fill" /><svg viewBox="0 0 700 180" preserveAspectRatio="none"><path d="M0,156 C35,145 62,158 95,131 S151,141 183,108 S238,117 275,102 S327,133 362,86 S418,93 452,72 S502,95 530,49 S585,82 616,40 S660,62 700,20" /></svg><div className="area-labels"><span>9/1</span><span>9/8</span><span>9/15</span><span>9/22</span><span>9/30</span></div></div> : <div className="empty-state">暂未提供按日趋势，请查看累计统计或导出报表。</div>}</section><section className="panel quality-panel"><div className="panel-header"><div><h3>译文质量分布</h3><p>AI 评分区间</p></div></div>{isDemo ? <div className="donut-wrap"><div className="donut"><div><strong>{report?.accuracy ?? 0}%</strong><span>平均采纳</span></div></div><div className="legend"><span><i className="legend-green" />优秀（90+） <b>—</b></span><span><i className="legend-blue" />良好（80-89） <b>—</b></span><span><i className="legend-gray" />待改进（&lt;80） <b>—</b></span></div></div> : <div className="empty-state">暂未提供质量评分数据，译文以管理员审核结果为准。</div>}</section></div><section className="panel contributor-panel"><div className="panel-header"><div><h3>贡献者排行</h3><p>按采纳译文数排序</p></div></div><div className="ranking-list">{contributors.length ? contributors.map((item, index) => <RankItem key={item.name} rank={String(index + 1).padStart(2, '0')} name={item.name} count={`${item.acceptedCount} 句`} rate={`${item.submittedCount ? Math.round((item.acceptedCount / item.submittedCount) * 100) : 0}%`} avatar={item.name.slice(0, 1)} />) : <div className="empty-state">暂无贡献者数据</div>}</div></section></div>
+  return <div className="admin-content"><PageHeader eyebrow="数据中心" title="数据报表" description="查看项目进度、贡献者活跃度与译文采纳情况。" action={<div className="report-actions"><select aria-label="报表入口筛选" value={entryCode} onChange={(event) => { setEntryCode(event.target.value); setScopedSummary(null); reportSync.refresh() }}><option value="">全部入口</option>{entries.map((entry) => <option key={entry.id} value={entry.code}>{entry.name}</option>)}</select><button className="outline-button" onClick={() => void onExport(entryCode || undefined)}><FileText size={16} />导出报表</button></div>} />{loadError && <p className="entry-error" role="alert">{loadError}</p>}<div className="stats-grid report-stats"><StatCard label="总句段数" value={String(total || 0)} trend="当前文章总量" icon={<FileText />} tone="blue" /><StatCard label="已提交" value={report ? String(report.translated) : '—'} trend="同一句可有多人提交" icon={<CheckCircle2 />} tone="green" /><StatCard label="参与人数" value={report ? String(report.contributors) : '—'} trend="已提交译文的译者" icon={<Users />} tone="purple" /><StatCard label="译文采纳率" value={report ? `${report.accuracy}%` : '—'} trend="已采纳句段 / 已提交译文" icon={<Sparkles />} tone="orange" /></div><div className="report-grid"><section className="panel chart-panel large"><div className="panel-header"><div><h3>每日翻译量</h3><p>过去 30 天句段提交趋势</p></div><button className="select-button">近 30 天 <ChevronDown size={15} /></button></div>{isDemo ? <div className="area-chart"><div className="area-fill" /><svg viewBox="0 0 700 180" preserveAspectRatio="none"><path d="M0,156 C35,145 62,158 95,131 S151,141 183,108 S238,117 275,102 S327,133 362,86 S418,93 452,72 S502,95 530,49 S585,82 616,40 S660,62 700,20" /></svg><div className="area-labels"><span>9/1</span><span>9/8</span><span>9/15</span><span>9/22</span><span>9/30</span></div></div> : <div className="empty-state">暂未提供按日趋势，请查看累计统计或导出报表。</div>}</section><section className="panel quality-panel"><div className="panel-header"><div><h3>译文质量分布</h3><p>AI 评分区间</p></div></div>{isDemo ? <div className="donut-wrap"><div className="donut"><div><strong>{report?.accuracy ?? 0}%</strong><span>平均采纳</span></div></div><div className="legend"><span><i className="legend-green" />优秀（90+） <b>—</b></span><span><i className="legend-blue" />良好（80-89） <b>—</b></span><span><i className="legend-gray" />待改进（&lt;80） <b>—</b></span></div></div> : <div className="empty-state">暂未提供质量评分数据，译文以管理员审核结果为准。</div>}</section></div><section className="panel contributor-panel"><div className="panel-header"><div><h3>贡献者排行</h3><p>按采纳译文数排序</p></div></div><div className="ranking-list">{contributors.length ? contributors.map((item, index) => <RankItem key={item.name} rank={String(index + 1).padStart(2, '0')} name={item.name} count={`${item.acceptedCount} 句`} rate={`${item.submittedCount ? Math.round((item.acceptedCount / item.submittedCount) * 100) : 0}%`} avatar={item.name.slice(0, 1)} />) : <div className="empty-state">暂无贡献者数据</div>}</div></section></div>
 }
 function RankItem({ rank, name, count, rate, avatar }: { rank: string; name: string; count: string; rate: string; avatar: string }) { return <div className="rank-item"><b className="rank-no">{rank}</b><span className="avatar avatar-small">{avatar}</span><strong>{name}</strong><span className="rank-count">{count}</span><span className="rank-rate"><CheckCircle2 size={14} />{rate} 采纳</span><MoreHorizontal size={16} /></div> }
 

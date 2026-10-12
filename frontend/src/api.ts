@@ -54,6 +54,7 @@ export type ReviewSubmission = {
   id: string; userId: string; userName: string; articleId: string; articleTitle: string
   sentenceId: string; position: number; sourceText: string; content: string; taskUnit: TaskUnit
   sourceLanguage: string; targetLanguage: string; reviewStatus: ReviewStatus
+  entryCode?: string; entryName?: string; entryChannel?: EntryChannel
   reviewNote: string; revision: number; createdAt: string; reviewedAt: string
 }
 export type RevisionRecord = { revision: number; content: string; reviewStatus: ReviewStatus; reviewNote: string; submittedAt: string; reviewedAt: string }
@@ -76,6 +77,8 @@ function mapReviewSubmission(row: any): ReviewSubmission {
     sentenceId: row.sentenceId, position: Number(row.position) || 1, sourceText: row.sourceText || '', content: row.content || '',
     taskUnit: (row.taskUnit === 'paragraph' || row.taskUnit === 'chapter' ? row.taskUnit : 'sentence') as TaskUnit,
     sourceLanguage: row.sourceLanguage || '原文', targetLanguage: row.targetLanguage || '目标语种', reviewStatus: status,
+    entryCode: row.entryCode || undefined, entryName: row.entryName || undefined,
+    entryChannel: row.entryChannel === 'public_account' ? 'wechat-public-account' : row.entryChannel === 'mini_program' ? 'wechat-mini-program' : row.entryChannel ? 'web' : undefined,
     reviewNote: row.reviewNote || '', revision: Number(row.revision), createdAt: row.createdAt || '', reviewedAt: row.reviewedAt || '' }
 }
 
@@ -129,6 +132,23 @@ export type RegisterPayload = {
   phone: string
   idNumber: string
   bankCardNo: string
+  /** Entry attribution is optional for direct web visits and required by configured WeChat links. */
+  entryCode?: string
+  entryChannel?: EntryChannel
+  entryName?: string
+}
+
+export type EntryChannel = 'web' | 'wechat-public-account' | 'wechat-mini-program'
+
+export type WorkspaceEntryConfig = {
+  id: string
+  name: string
+  code: string
+  channel: EntryChannel
+  url: string
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export type RegisteredUser = {
@@ -139,7 +159,15 @@ export type RegisteredUser = {
   idNumber?: string | null
   bankCardNo?: string | null
   verificationStatus?: 'pending' | 'verified' | 'rejected'
+  entryCode?: string | null
+  entryName?: string | null
+  entryChannel?: EntryChannel | null
 }
+
+export const mockEntryConfigs: WorkspaceEntryConfig[] = [
+  { id: 'entry-doctor-public', name: '医生端 · 中康公众号', code: 'zk-doctor-public', channel: 'wechat-public-account', url: '', enabled: true, createdAt: '2026-10-01 09:00', updatedAt: '2026-10-01 09:00' },
+  { id: 'entry-doctor-mini', name: '医生端 · 中康小程序', code: 'zk-doctor-mini', channel: 'wechat-mini-program', url: '', enabled: true, createdAt: '2026-10-01 09:00', updatedAt: '2026-10-01 09:00' },
+]
 
 export const mockSegments: Segment[] = [
   {
@@ -265,6 +293,21 @@ function mapArticleDetail(result: any): ArticleDetail {
   })) }
 }
 
+function mapEntryConfig(entry: any): WorkspaceEntryConfig {
+  const channel = entry.channel === 'wechat-public-account' || entry.channel === 'public_account' ? 'wechat-public-account' as const
+    : entry.channel === 'wechat-mini-program' || entry.channel === 'mini_program' ? 'wechat-mini-program' as const : 'web' as const
+  if (!entry?.id || !String(entry.code || '').trim()) throw new Error('入口配置数据格式异常，请刷新后重试')
+  return {
+    id: String(entry.id), name: String(entry.name || entry.code), code: String(entry.code), channel,
+    url: String(entry.url || ''), enabled: entry.enabled !== undefined ? entry.enabled !== false : entry.status !== 'disabled',
+    createdAt: String(entry.createdAt || ''), updatedAt: String(entry.updatedAt || entry.createdAt || ''),
+  }
+}
+
+export function entryChannelLabel(channel: EntryChannel): string {
+  return channel === 'wechat-public-account' ? '微信公众号' : channel === 'wechat-mini-program' ? '微信小程序' : '网页登录'
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController()
   const cancel = () => controller.abort()
@@ -288,10 +331,11 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  registrationConfig: async () => {
-    const result = await request<{ mode?: string; fieldsRequired?: boolean }>('/api/auth/registration-config')
+  registrationConfig: async (entryCode?: string, channel?: EntryChannel) => {
+    const query = entryCode ? `?entry=${encodeURIComponent(entryCode)}${channel && channel !== 'web' ? `&channel=${encodeURIComponent(channel === 'wechat-public-account' ? 'public-account' : 'mini-program')}` : ''}` : ''
+    const result = await request<{ mode?: string; fieldsRequired?: boolean; entry?: any }>('/api/auth/registration-config' + query)
     if (!['open', 'standard'].includes(result.mode || '')) throw new Error('注册设置暂时无法确认，请重试')
-    return { mode: result.mode as 'open' | 'standard', fieldsRequired: result.mode !== 'open' }
+    return { mode: result.mode as 'open' | 'standard', fieldsRequired: result.mode !== 'open', entry: result.entry ? mapEntryConfig(result.entry) : undefined }
   },
   loginAdmin: async (key: string) => {
     if (isDemo) return { ok: true }
@@ -313,11 +357,38 @@ export const api = {
     if (role === 'translator') { localStorage.removeItem('zk_registered'); localStorage.removeItem('zk_user') }
   },
   register: async (payload: RegisterPayload) => {
-    const fallback = { user: { id: `local-${Date.now()}`, name: payload.realName, realName: payload.realName, phone: payload.phone, idNumber: payload.idNumber, bankCardNo: payload.bankCardNo, verificationStatus: 'pending' as const } }
+    const fallback = { user: { id: `local-${Date.now()}`, name: payload.realName, realName: payload.realName, phone: payload.phone, idNumber: payload.idNumber, bankCardNo: payload.bankCardNo, verificationStatus: 'pending' as const, entryCode: payload.entryCode || null, entryName: payload.entryName || null, entryChannel: payload.entryChannel || null } }
     if (isDemo) return fallback
     const result = await request<{ user: RegisteredUser }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ ...payload, name: payload.realName }) })
     if (!result.user?.id) throw new Error('未确认注册结果，请稍后重试')
     return result
+  },
+  getEntryConfigs: async (signal?: AbortSignal): Promise<WorkspaceEntryConfig[]> => {
+    if (isDemo) return mockEntryConfigs.map((entry) => ({ ...entry }))
+    const result = await request<{ entries?: any[] }>('/api/admin/entries', { signal, headers: { 'X-Admin-Key': getAdminKey() } })
+    if (!Array.isArray(result.entries)) throw new Error('入口配置数据格式异常，请刷新后重试')
+    return result.entries.map(mapEntryConfig)
+  },
+  createEntryConfig: async (payload: Pick<WorkspaceEntryConfig, 'name' | 'code' | 'channel' | 'url' | 'enabled'>): Promise<WorkspaceEntryConfig> => {
+    if (!payload.name.trim() || !payload.code.trim()) throw new Error('请填写入口名称和唯一标识')
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$/.test(payload.code.trim())) throw new Error('入口标识需为 2–64 位字母、数字、下划线或短横线')
+    if (isDemo) return mapEntryConfig({ ...payload, id: `entry-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    const result = await request<{ entry?: any }>('/api/admin/entries', { method: 'POST', headers: { 'X-Admin-Key': getAdminKey() }, body: JSON.stringify({ ...payload, channel: payload.channel === 'wechat-public-account' ? 'public_account' : payload.channel === 'wechat-mini-program' ? 'mini_program' : 'web', name: payload.name.trim(), code: payload.code.trim() }) })
+    if (!result.entry?.id) throw new Error('未确认入口保存结果，请刷新后重试')
+    return mapEntryConfig(result.entry)
+  },
+  updateEntryConfig: async (id: string, payload: Partial<Pick<WorkspaceEntryConfig, 'name' | 'code' | 'channel' | 'url' | 'enabled'>>): Promise<WorkspaceEntryConfig> => {
+    if (!id) throw new Error('入口标识缺失，请刷新后重试')
+    if (payload.code !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$/.test(payload.code.trim())) throw new Error('入口标识需为 2–64 位字母、数字、下划线或短横线')
+    if (isDemo) {
+      const current = mockEntryConfigs.find((item) => item.id === id)
+      if (!current) throw new Error('入口不存在')
+      return mapEntryConfig({ ...current, ...payload, updatedAt: new Date().toISOString() })
+    }
+    const body = { ...payload, ...(payload.channel ? { channel: payload.channel === 'wechat-public-account' ? 'public_account' : payload.channel === 'wechat-mini-program' ? 'mini_program' : 'web' } : {}) }
+    const result = await request<{ entry?: any }>(`/api/admin/entries/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'X-Admin-Key': getAdminKey() }, body: JSON.stringify(body) })
+    if (!result.entry?.id) throw new Error('未确认入口更新结果，请刷新后重试')
+    return mapEntryConfig(result.entry)
   },
   getTasks: async (signal?: AbortSignal, explicitUserId?: string) => {
     const userId = explicitUserId || currentUserId()
@@ -401,8 +472,9 @@ export const api = {
     }
     return [...grouped.values()]
   },
-  getReviewSubmissions: async (signal?: AbortSignal): Promise<ReviewSubmission[]> => {
-    const result = await request<{ translations?: any[] }>('/api/admin/translations', { signal, headers: { 'X-Admin-Key': getAdminKey() } })
+  getReviewSubmissions: async (signal?: AbortSignal, entryCode?: string): Promise<ReviewSubmission[]> => {
+    const query = entryCode ? `?entryCode=${encodeURIComponent(entryCode)}` : ''
+    const result = await request<{ translations?: any[] }>('/api/admin/translations' + query, { signal, headers: { 'X-Admin-Key': getAdminKey() } })
     if (!Array.isArray(result.translations)) throw new Error('审核数据格式异常，请刷新后重试')
     return result.translations.map(mapReviewSubmission)
   },
@@ -424,17 +496,19 @@ export const api = {
     if (result.translation?.id !== id || Number(result.translation.revision) !== expectedRevision || reviewStatusOf(result.translation) !== decision) throw new Error('未确认审核结果，请刷新后重试')
     return result.translation
   },
-  getSummary: async (signal?: AbortSignal) => {
+  getSummary: async (signal?: AbortSignal, entryCode?: string) => {
     const adminKey = getAdminKey()
     if (isDemo) return { sentenceCount: 90, pending: 12, translated: 128, accepted: 103, contributors: 36, accuracy: 92 }
-    const result = await request<{ totals?: any; translators?: any[] }>('/api/admin/reports', { signal, headers: { 'X-Admin-Key': adminKey } })
+    const query = entryCode ? `?entryCode=${encodeURIComponent(entryCode)}` : ''
+    const result = await request<{ totals?: any; translators?: any[] }>(`/api/admin/reports${query}`, { signal, headers: { 'X-Admin-Key': adminKey } })
     if (!result.totals || !Array.isArray(result.translators)) throw new Error('报表数据格式异常，请稍后重试')
     return { sentenceCount: Number(result.totals?.sentenceCount || 0), pending: Number(result.totals?.pendingTranslationCount || 0), translated: Number(result.totals?.translationCount || 0), accepted: Number(result.totals?.acceptedSentenceCount || 0), contributors: (result.translators || []).filter((item: any) => Number(item.submittedCount || 0) > 0).length, accuracy: result.totals?.translationCount ? Math.round((Number(result.totals.acceptedSentenceCount || 0) / Number(result.totals.translationCount)) * 100) : 0, topContributors: (result.translators || []).filter((item: any) => Number(item.submittedCount || 0) > 0).slice(0, 5).map((item: any) => ({ name: item.name || '译者', acceptedCount: Number(item.acceptedCount || 0), submittedCount: Number(item.submittedCount || 0) })) }
   },
-  exportReport: async () => {
+  exportReport: async (entryCode?: string) => {
     const adminKey = getAdminKey()
     if (isDemo) throw new Error('请先进入管理员模式')
-    const response = await fetch(apiUrl('/api/admin/reports/export.csv'), { credentials: 'include', headers: { 'X-Admin-Key': adminKey } })
+    const query = entryCode ? `?entryCode=${encodeURIComponent(entryCode)}` : ''
+    const response = await fetch(apiUrl('/api/admin/reports/export.csv' + query), { credentials: 'include', headers: { 'X-Admin-Key': adminKey } })
     if (!response.ok) { const detail = await response.json().catch(() => null); throw new Error(detail?.error || `HTTP ${response.status}`) }
     const blob = await response.blob()
     const url = URL.createObjectURL(blob)

@@ -26,7 +26,7 @@ bash deploy/simulation/start.sh
 
 请求 URL、Host、TLS SNI 和证书验证跟随 `SIMULATION_MODEL_ORIGIN`（当前为 `provider.example.invalid`）；代理只改变 CONNECT 的网络地址，不关闭证书验证，也不回退到其他模型。节点地址或本机代理改变时需重新验证并更新测试配置，不要将此本机适配直接复制到生产部署。
 
-后端、前端及代理页面使用三个本地测试镜像 `translation-platform/test-backend:0.2.5`、`translation-platform/test-frontend:0.2.5`、`translation-platform/test-nginx:0.2.5`。因为当前 Docker 虚拟机无法读取此目录的主机挂载，测试资源已复制到专用镜像中。它们未上传正式镜像仓库；生产镜像和交付配置未被替换。
+后端、前端及代理页面使用三个本地测试镜像 `translation-platform/test-backend:0.2.6`、`translation-platform/test-frontend:0.2.6`、`translation-platform/test-nginx:0.2.6`。因为当前 Docker 虚拟机无法读取此目录的主机挂载，测试资源已复制到专用镜像中。它们未上传正式镜像仓库；生产镜像和交付配置未被替换。
 
 真实模型单句验证记录：`test-results/test-environment-live-key.json`。浏览器验收画面：`test-results/real-key-test-environment.png`。
 
@@ -37,7 +37,7 @@ bash deploy/simulation/start.sh
 页面资源已打入本机测试 Nginx 镜像，修改本目录的 `public/` 或 `nginx.conf` 后，在项目根目录执行：
 
 ```bash
-docker buildx build --platform linux/amd64 --provenance=false --sbom=false --load --network none -f deploy/simulation/Dockerfile.nginx -t translation-platform/test-nginx:0.2.5 deploy/simulation
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false --load --network none -f deploy/simulation/Dockerfile.nginx -t translation-platform/test-nginx:0.2.6 deploy/simulation
 docker compose -p translation-platform-simulation --env-file deploy/simulation/.env -f deploy/docker-compose.yml -f deploy/simulation/compose.override.yml up -d --no-deps --no-build --pull never --wait --wait-timeout 120 nginx
 ```
 
@@ -51,7 +51,7 @@ docker compose -p translation-platform-simulation --env-file deploy/simulation/.
 
 浏览器验收导入了「社区共译计划」「数字阅读协作」两篇 Word 文档，各 6 句、每句 3 人，可用于后续体验。现有三篇文章的每句 8 人配置已在调额测试后恢复。
 
-验收记录：`test-results/article-management-20261008.json`；画面：`test-results/article-management-desktop.png`、`test-results/article-management-config.png`、`test-results/article-management-mobile.png`。本机专用镜像与正式发布镜像统一使用 0.2.5。
+验收记录：`test-results/article-management-20261008.json`；画面：`test-results/article-management-desktop.png`、`test-results/article-management-config.png`、`test-results/article-management-mobile.png`。本机专用镜像与正式发布镜像统一使用 0.2.6。
 
 ## 翻译审核与重译验收
 

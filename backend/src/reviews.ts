@@ -22,6 +22,7 @@ const taskSelect = `SELECT x.id,x.user_id AS userId,x.status,x.assigned_at AS as
     s.id AS sentenceId,s.position,s.source_text AS sourceText,s.translation_suggestion AS translationSuggestion,
     s.suggestion_status AS suggestionStatus,s.suggestion_error AS suggestionError,s.suggestion_retry_at AS suggestionRetryAt,
     a.id AS articleId,a.title,a.task_unit AS taskUnit,a.target_language AS targetLanguage,
+    u.entry_id AS entryId,e.code AS entryCode,e.name AS entryName,e.channel AS entryChannel,
     t.id AS translationId,t.content AS submittedContent,t.status AS translationStatus,t.reviewed_at AS reviewedAt,
     t.created_at AS submittedAt,COALESCE(t.revision,0) AS revision,
     CASE WHEN t.id IS NULL THEN NULL ELSE ${reviewStatusSql()} END AS reviewStatus,
@@ -29,6 +30,7 @@ const taskSelect = `SELECT x.id,x.user_id AS userId,x.status,x.assigned_at AS as
       THEN COALESCE(NULLIF(t.review_note,''),'${legacyReviewNote}') ELSE t.review_note END AS reviewNote,
     (x.status='done' OR EXISTS (SELECT 1 FROM translations winner WHERE winner.sentence_id=s.id AND winner.status='accepted')) AS closed
   FROM assignments x JOIN sentences s ON s.id=x.sentence_id JOIN articles a ON a.id=s.article_id
+  JOIN users u ON u.id=x.user_id LEFT JOIN entry_points e ON e.id=u.entry_id
   LEFT JOIN translations t ON t.sentence_id=s.id AND t.user_id=x.user_id`;
 
 export type TaskView = Record<string, unknown> & {

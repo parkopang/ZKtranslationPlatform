@@ -127,18 +127,18 @@ docker compose --profile simulation -p translation-platform-simulation \
 
 ## 5. 尽量离线部署
 
-离线包只需要三个应用镜像（backend、frontend、nginx），因为生产 MySQL、Redis 和 COS 是外部托管服务。联网构建机先登录镜像仓库、拉取或构建已经验收的 0.2.5 镜像，然后生成归档：
+离线包只需要三个应用镜像（backend、frontend、nginx），因为生产 MySQL、Redis 和 COS 是外部托管服务。联网构建机先登录镜像仓库、拉取或构建已经验收的 0.2.6 镜像，然后生成归档：
 
 ```bash
 cd translation-platform/deploy
-IMAGE_BUNDLE_TAG=0.2.5 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
+IMAGE_BUNDLE_TAG=0.2.6 ENV_FILE=.env bash scripts/prepare-offline-bundle.sh
 ```
 
-把 `offline/translation-platform-images-0.2.5.tar.gz`、对应 `.sha256`、`.manifest.txt`、`docker-compose.yml`、`.env` 和 `scripts/` 交给运维。机房机器无需访问镜像仓库：
+把 `offline/translation-platform-images-0.2.6.tar.gz`、对应 `.sha256`、`.manifest.txt`、`docker-compose.yml`、`.env` 和 `scripts/` 交给运维。机房机器无需访问镜像仓库：
 
 ```bash
 cd translation-platform/deploy
-IMAGE_BUNDLE_TAG=0.2.5 ENV_FILE=.env bash scripts/start-offline.sh
+IMAGE_BUNDLE_TAG=0.2.6 ENV_FILE=.env bash scripts/start-offline.sh
 ```
 
 脚本会先校验 SHA-256，再 `docker load`，以 `--pull never --no-build` 启动。离线只针对镜像分发；业务运行仍需访问内网 MySQL/Redis、COS 和模型网关。若机房完全隔离外网，需为模型网关和 COS 准备网络出口或企业代理。
@@ -159,13 +159,29 @@ ENV_FILE=.env bash scripts/healthcheck.sh
 
 ## 7. 微信入口和医生端网页登录
 
-医生端复用移动 H5 的志愿者工作区，登录、注册、领取任务和提交译文都在同一个 HTTPS 页面完成。医生端固定入口为：
+医生端复用移动 H5 的志愿者工作区，登录、注册、领取任务和提交译文都在同一个 HTTPS 页面完成。每个公众号或小程序先在管理员后台创建入口记录，再使用后台生成的链接；不要在部署文件或微信后台手工拼接入口参数。
+
+### 管理员配置多个入口
+
+管理员进入“入口管理”后，为每个需要接入的平台创建一条记录：
+
+1. 填写入口名称（例如“华南医学公众号”“医生服务小程序”）和渠道类型（公众号或小程序）。入口名称会显示在志愿者注册页和后台筛选器中。
+2. 保存后由系统生成唯一入口编码和 HTTPS 跳转地址。管理员可复制地址、查看最近访问/注册数量、设置启用或停用；入口编码一经使用不要修改。
+3. 将公众号入口地址配置到该公众号的“自定义菜单 → 跳转网页”，将小程序入口地址配置到该小程序的 `web-view` 页面。多个公众号或小程序可以共用 H5 域名，但必须使用各自的入口地址。
+4. 停用入口后，新访问会看到入口不可用提示且不能注册；已注册志愿者、既有任务和历史译文继续保留。需要换域名时创建新入口并重新发布菜单，不要复用旧编码。
+
+后台对应接口为 `GET/POST/PATCH /api/admin/entries`，必须使用管理员会话。`GET /api/auth/registration-config?entry=<入口编码>&channel=<public-account|mini-program>` 返回入口名称、渠道和是否允许注册；前端注册页必须以此结果为准。接口不会接受前端传入的任意名称来冒充入口。
+
+志愿者进入注册页时会看到“来自：入口名称 · 公众号/小程序”。注册成功后，入口编码、渠道和入口名称会写入用户来源记录；后台志愿者列表、文章定向分配、翻译审核、报表和审计日志支持按入口筛选。入口是来源标识，任务分配仍由文章和管理员配置决定；如需让不同入口使用不同文章池，应在后台按入口筛选后再分配，避免把一个入口的志愿者误分到另一个入口。
+
+医生端链接格式为：
 
 ```text
-https://<H5业务域名>/doctor?entry=doctor&channel=public-account
+https://<H5业务域名>/doctor?entry=<管理员生成的公众号入口编码>&channel=public-account
+https://<H5业务域名>/doctor?entry=<管理员生成的小程序入口编码>&channel=mini-program
 ```
 
-`workspace=translator` 必须保留；`entry` 只是来源标记，可使用 `official-account` 或 `miniprogram`，后端会忽略未知查询参数。管理员后台使用 `?workspace=admin`，不要把管理员地址挂到公众号或小程序菜单。
+`workspace=translator` 必须保留。`entry` 必须是后台已创建且启用的入口编码，`channel` 必须和入口记录匹配；未知、停用或渠道不匹配的链接不能进入注册流程。管理员后台使用 `?workspace=admin`，不要把管理员地址挂到公众号或小程序菜单。
 
 ### 公众号自定义菜单
 
@@ -173,7 +189,7 @@ https://<H5业务域名>/doctor?entry=doctor&channel=public-account
 2. 在“内容与互动 → 自定义菜单”新增菜单，类型选择“跳转网页”，页面地址填：
 
    ```text
-   https://<H5业务域名>/?workspace=translator&entry=official-account
+   https://<H5业务域名>/?workspace=translator&entry=<公众号入口编码>&channel=public-account
    ```
 
 3. 发布菜单后，用微信内置浏览器打开链接，确认注册页、登录态和任务列表均能加载；不要使用 `http://`、内网 IP 或带端口的地址。
@@ -186,7 +202,7 @@ https://<H5业务域名>/doctor?entry=doctor&channel=public-account
 2. 小程序页面使用 `web-view` 打开同一医生端地址，推荐通过页面参数传入完整 URL：
 
    ```text
-   https://<H5业务域名>/?workspace=translator&entry=miniprogram
+   https://<H5业务域名>/?workspace=translator&entry=<小程序入口编码>&channel=mini-program
    ```
 
 3. 发布前在真机验证：首次注册、刷新后会话仍在、领取任务、提交译文和审核结果刷新均正常。H5 与 API 使用同源 `/api`，外层反向代理要保留 `Host`、`X-Forwarded-Proto: https` 和 Cookie，不要把 API 改成跨域裸 IP。
@@ -197,7 +213,19 @@ https://<H5业务域名>/doctor?entry=doctor&channel=public-account
 
 - 外层负载均衡只允许 HTTPS，回源到 Nginx 80 端口；`CORS_ORIGIN` 设置为实际 H5 域名，公众号和小程序不使用 `*`。
 - 微信入口只展示医生/志愿者工作区；管理员继续使用单独的后台入口和管理员会话。
+- 入口编码只能作为来源定位符，不能替代登录和微信身份校验。生产接入 OAuth/`wx.login` 后，应在服务端把 `openid/unionid` 与入口绑定，再创建 HttpOnly Cookie；不要相信前端自行提交的入口名称、渠道或 `openid`。
 - 发布前检查 `curl -I https://<H5业务域名>/?workspace=translator` 返回 200，并在微信真机确认没有证书、域名白名单或 Cookie 阻断提示。
+
+### 多入口验收用例
+
+至少创建两个入口（一个公众号、一个小程序），再按以下顺序验收：
+
+1. 管理员分别复制两个入口链接；链接的编码不同，渠道值分别为 `public-account` 和 `mini-program`。
+2. 分别在微信内置浏览器和小程序 `web-view` 打开链接。注册页显示对应入口名称和渠道，提交注册后刷新仍保留同一志愿者会话。
+3. 在管理员后台按入口筛选志愿者，两个测试账号只能出现在各自入口；入口来源显示在列表和详情中，身份证号、银行卡号仍只显示掩码。
+4. 为同一篇文章配置多人协作并分配给两个入口的志愿者，验证任务、提交、退回、采纳和报表按入口筛选后数量一致；不筛选时总数等于各入口之和。
+5. 停用其中一个入口后重新打开链接，访问被拒绝或提示入口已停用，不能新注册；原账号继续登录并可查看既有记录。
+6. 修改入口名称后，历史注册记录仍按原入口编码可查；删除/停用入口不会删除志愿者、任务、译文和审计数据。
 
 ## 8. 运行安全
 

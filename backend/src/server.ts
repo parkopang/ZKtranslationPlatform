@@ -8,7 +8,7 @@ import mammoth from 'mammoth';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
-import { createDb, id, seedDemo, type DB } from './db.js';
+import { createDb, id, seedDemo, DEFAULT_ENTRY_ID, type DB } from './db.js';
 import { articleSentenceViews, articleViews } from './articles.js';
 import { reviewFieldsSql, reviewStatusSql, taskViews, translationHistory, translationView } from './reviews.js';
 import { decryptPii, encryptPii, hashPii, hasPiiEncryptionKey } from './pii.js';
@@ -218,6 +218,18 @@ const uuidSchema = z.string().uuid();
 const translatorSlotsSchema = z.number().int().min(1).max(20);
 const taskUnitSchema = z.enum(['sentence', 'paragraph', 'chapter']);
 const articleLanguageSchema = z.string().trim().min(1).max(30);
+const entryCodeSchema = z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,63}$/i, '入口编码只能包含字母、数字、下划线和短横线');
+const entryNameSchema = z.string().trim().min(1).max(200);
+const entryChannelSchema = z.enum(['public_account', 'mini_program', 'web']);
+const entryStatusSchema = z.enum(['active', 'disabled']);
+const entryUrlSchema = z.string().trim().url().max(1024).optional().nullable();
+function normalizeEntryChannel(value: unknown): string | null {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'public_account' || raw === 'public-account' || raw === 'wechat-public-account') return 'public_account';
+  if (raw === 'mini_program' || raw === 'mini-program' || raw === 'wechat-mini-program') return 'mini_program';
+  if (raw === 'web') return 'web';
+  return null;
+}
 const articleFieldsSchema = z.object({
   title: z.string().trim().min(1).max(200),
   text: z.string().trim().min(1).max(2_000_000),
@@ -247,6 +259,25 @@ function publicUser(row: Record<string, unknown> | undefined): Record<string, un
     idNumber: maskIdentity(decryptPii(row.idNumber as string | null)),
     bankCardNo: maskIdentity(decryptPii(row.bankCardNo as string | null), 4, 4),
   };
+}
+
+function entryView(entryId: string | null | undefined): Record<string, unknown> | undefined {
+  if (!entryId) return undefined;
+  return db.prepare(`SELECT id,code,name,channel,status,url,created_at as createdAt,updated_at as updatedAt
+    FROM entry_points WHERE id=?`).get(entryId) as Record<string, unknown> | undefined;
+}
+
+function publicEntry(row: unknown): Record<string, unknown> | undefined {
+  if (!row || typeof row !== 'object') return undefined;
+  const value = row as Record<string, unknown>;
+  return { id: value.id, code: value.code, name: value.name, channel: value.channel, status: value.status, enabled: value.status === 'active', url: value.url, createdAt: value.createdAt, updatedAt: value.updatedAt };
+}
+
+function userSelect(extra = ''): string {
+  return `SELECT u.id,u.name,u.real_name as realName,u.phone,u.id_number as idNumber,u.bank_card_no as bankCardNo,
+    u.verification_status as verificationStatus,u.verification_source as verificationSource,u.open_id as openId,
+    u.entry_id as entryId,e.code as entryCode,e.name as entryName,e.channel as entryChannel,e.status as entryStatus,e.url as entryUrl,
+    u.created_at as createdAt FROM users u LEFT JOIN entry_points e ON e.id=u.entry_id ${extra}`;
 }
 
 type TaskUnit = z.infer<typeof taskUnitSchema>;
@@ -402,6 +433,81 @@ app.get('/api/admin/audit-logs', adminOnly, (req, res) => {
   res.json({ logs, limit, offset });
 });
 
+// Entry points distinguish volunteers arriving from different public accounts
+// and mini-programs. Active entry metadata is public so a registration page can
+// render the correct channel and carry its code into registration.
+app.get('/api/entries', (req, res) => {
+  const channel = normalizeEntryChannel(req.query.channel);
+  const entries = db.prepare(`SELECT id,code,name,channel,status,url,created_at as createdAt,updated_at as updatedAt
+    FROM entry_points WHERE status='active' AND (? IS NULL OR channel=?) ORDER BY name,code`).all(channel, channel).map(publicEntry);
+  res.json({ entries });
+});
+
+app.get('/api/admin/entries', adminOnly, (req, res) => {
+  const statusValue = typeof req.query.status === 'string' ? req.query.status : '';
+  const status = statusValue && entryStatusSchema.safeParse(statusValue).success ? statusValue : null;
+  const entries = db.prepare(`SELECT id,code,name,channel,status,url,created_at as createdAt,updated_at as updatedAt
+    FROM entry_points WHERE (? IS NULL OR status=?) ORDER BY name,code`).all(status, status).map(publicEntry);
+  audit(req, 'admin.entries.list', 'entry');
+  res.json({ entries });
+});
+
+app.post('/api/admin/entries', adminOnly, writeLimiter, (req, res) => {
+  const parsed = z.object({ code: entryCodeSchema, name: entryNameSchema, channel: entryChannelSchema,
+    status: entryStatusSchema.optional(), enabled: z.boolean().optional(), url: entryUrlSchema }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: '入口编码、名称、类型或链接格式不正确', details: parsed.error.flatten() }); return; }
+  const entryId = id();
+  try {
+    const status = parsed.data.status || (parsed.data.enabled === false ? 'disabled' : 'active');
+    db.prepare(`INSERT INTO entry_points (id,code,name,channel,status,url,updated_at) VALUES (?,?,?,?,?,?,datetime('now'))`)
+      .run(entryId, parsed.data.code, parsed.data.name, parsed.data.channel, status, parsed.data.url || null);
+  } catch (error) {
+    if ((error as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE' || (error as { code?: string }).code === 'ER_DUP_ENTRY') {
+      res.status(409).json({ error: '入口编码已存在' }); return;
+    }
+    throw error;
+  }
+  const entry = publicEntry(entryView(entryId));
+  audit(req, 'admin.entry.create', 'entry', entryId, { code: parsed.data.code, channel: parsed.data.channel });
+  res.status(201).json({ entry });
+});
+
+app.patch('/api/admin/entries/:entryId', adminOnly, writeLimiter, (req, res) => {
+  const parsed = z.object({ code: entryCodeSchema.optional(), name: entryNameSchema.optional(), channel: entryChannelSchema.optional(),
+    status: entryStatusSchema.optional(), enabled: z.boolean().optional(), url: entryUrlSchema }).strict().safeParse(req.body);
+  if (!parsed.success || !Object.keys(parsed.data).length) { res.status(400).json({ error: '请提供需要更新的入口配置', details: parsed.success ? undefined : parsed.error.flatten() }); return; }
+  const current = entryView(String(req.params.entryId));
+  if (!current) { res.status(404).json({ error: '入口不存在' }); return; }
+  if (parsed.data.code !== undefined && parsed.data.code !== String(current.code)) {
+    res.status(400).json({ error: '入口唯一标识创建后不能修改，请停用旧入口并新建入口' }); return;
+  }
+  if (String(req.params.entryId) === DEFAULT_ENTRY_ID && parsed.data.status === 'disabled') {
+    res.status(400).json({ error: '默认入口不能停用，请先配置新的入口' }); return;
+  }
+  const next = { code: parsed.data.code ?? String(current.code), name: parsed.data.name ?? String(current.name),
+    channel: parsed.data.channel ?? String(current.channel), status: parsed.data.status ?? (parsed.data.enabled === undefined ? String(current.status) : parsed.data.enabled ? 'active' : 'disabled'),
+    url: parsed.data.url === undefined ? (current.url as string | null) : parsed.data.url };
+  try {
+    db.prepare(`UPDATE entry_points SET code=?,name=?,channel=?,status=?,url=?,updated_at=datetime('now') WHERE id=?`)
+      .run(next.code, next.name, next.channel, next.status, next.url || null, req.params.entryId);
+  } catch (error) {
+    if ((error as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE' || (error as { code?: string }).code === 'ER_DUP_ENTRY') {
+      res.status(409).json({ error: '入口编码已存在' }); return;
+    }
+    throw error;
+  }
+  audit(req, 'admin.entry.update', 'entry', String(req.params.entryId), { code: next.code, status: next.status });
+  res.json({ entry: publicEntry(entryView(String(req.params.entryId))) });
+});
+
+app.delete('/api/admin/entries/:entryId', adminOnly, writeLimiter, (req, res) => {
+  if (String(req.params.entryId) === DEFAULT_ENTRY_ID) { res.status(400).json({ error: '默认入口不能删除' }); return; }
+  const result = db.prepare("UPDATE entry_points SET status='disabled',updated_at=datetime('now') WHERE id=?").run(req.params.entryId);
+  if (!result.changes) { res.status(404).json({ error: '入口不存在' }); return; }
+  audit(req, 'admin.entry.disable', 'entry', String(req.params.entryId));
+  res.json({ ok: true, entry: publicEntry(entryView(String(req.params.entryId))) });
+});
+
 app.get('/api/articles', adminOnly, (req, res) => {
   audit(req, 'admin.articles.list', 'article');
   res.json({ articles: articleViews(db) });
@@ -442,9 +548,17 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/auth/registration-config', (_req, res) => {
+app.get('/api/auth/registration-config', (req, res) => {
   const open = registrationMode() === 'open';
-  res.json({ mode: open ? 'open' : 'standard', fieldsRequired: !open, externalVerificationEnabled: false });
+  const entries = db.prepare(`SELECT id,code,name,channel,status,url FROM entry_points
+    WHERE status='active' ORDER BY name,code`).all().map(publicEntry);
+  const requestedCode = typeof req.query.entry === 'string' ? req.query.entry.trim() : typeof req.query.entryCode === 'string' ? req.query.entryCode.trim() : '';
+  const channel = normalizeEntryChannel(req.query.channel) || '';
+  const selected = requestedCode ? entries.find((entry) => entry?.code === requestedCode) : entries.find((entry) => entry?.code === 'default');
+  if (requestedCode && (!selected || (channel && selected.channel !== channel))) {
+    res.status(400).json({ error: '注册入口不存在、已停用或渠道不匹配' }); return;
+  }
+  res.json({ mode: open ? 'open' : 'standard', fieldsRequired: !open, externalVerificationEnabled: false, defaultEntryCode: 'default', entry: selected, entries });
 });
 
 app.post(['/api/users/register', '/api/auth/register'], authLimiter, (req, res) => {
@@ -455,19 +569,32 @@ app.post(['/api/users/register', '/api/auth/register'], authLimiter, (req, res) 
     phone: z.string().trim().regex(/^\+?[0-9][0-9\-\s]{5,29}$/, '手机号格式不正确'),
     idNumber: z.string().trim().min(6).max(30),
     bankCardNo: z.string().trim().min(8).max(32),
-    openId: z.string().trim().max(100).optional()
+    openId: z.string().trim().max(100).optional(),
+    entryCode: entryCodeSchema.optional(), entryChannel: z.enum(['public_account', 'mini_program', 'web', 'public-account', 'mini-program']).optional(),
+    entryId: uuidSchema.optional(),
   });
   // Explicit open-registration deployments admit volunteers without an external
   // identity check. Keep bounded strings but no format/required rules.
   const openSchema = z.object({
     name: z.string().trim().max(500).optional(), realName: z.string().trim().max(500).optional(),
     phone: z.string().trim().max(500).optional(), idNumber: z.string().trim().max(500).optional(),
-    bankCardNo: z.string().trim().max(500).optional(),
+    bankCardNo: z.string().trim().max(500).optional(), entryCode: z.string().trim().max(64).optional(), entryId: z.string().trim().max(100).optional(), entryChannel: z.string().trim().max(32).optional(),
   });
   const parsed = (openRegistration ? openSchema : standardSchema).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: openRegistration ? '注册资料请使用不超过 500 字的文本' : '姓名与手机号必填，身份证号、银行卡号用于后续实名核验', details: parsed.error.flatten() }); return; }
   const { name, realName, phone = '', idNumber = '', bankCardNo = '' } = parsed.data;
   const openId = 'openId' in parsed.data ? parsed.data.openId as string | undefined : undefined;
+  const requestedEntryCode = 'entryCode' in parsed.data ? parsed.data.entryCode as string | undefined : undefined;
+  const requestedEntryId = 'entryId' in parsed.data ? parsed.data.entryId as string | undefined : undefined;
+  const requestedEntryChannel = 'entryChannel' in parsed.data ? String(parsed.data.entryChannel || '') : '';
+  const selectedEntry = requestedEntryId
+    ? db.prepare(`SELECT id,code,name,channel,status,url FROM entry_points WHERE id=?`).get(requestedEntryId) as Record<string, unknown> | undefined
+    : requestedEntryCode
+      ? db.prepare(`SELECT id,code,name,channel,status,url FROM entry_points WHERE code=?`).get(requestedEntryCode) as Record<string, unknown> | undefined
+      : entryView(DEFAULT_ENTRY_ID);
+  if (!selectedEntry || selectedEntry.status !== 'active') { res.status(400).json({ error: '请选择有效的注册入口' }); return; }
+  const normalizedRequestedChannel = normalizeEntryChannel(requestedEntryChannel) || requestedEntryChannel;
+  if (normalizedRequestedChannel && normalizedRequestedChannel !== selectedEntry.channel) { res.status(400).json({ error: '注册入口渠道不匹配' }); return; }
   if (openId) {
     if (db.prepare('SELECT id FROM users WHERE open_id=?').get(openId)) { res.status(409).json({ error: '该用户已注册，请使用已有登录会话' }); return; }
   }
@@ -476,23 +603,23 @@ app.post(['/api/users/register', '/api/auth/register'], authLimiter, (req, res) 
   if (existingPhone) { res.status(409).json({ error: '该手机号已注册' }); return; }
   const userId = id();
   const displayName = realName || name || `志愿者${userId.slice(-6)}`;
-  db.prepare('INSERT INTO users (id,name,real_name,phone,phone_hash,id_number,bank_card_no,open_id,verification_status,verification_source) VALUES (?,?,?,?,?,?,?,?,?,?)').run(userId, displayName, realName || name || displayName, encryptPii(phone), phoneHash, encryptPii(idNumber), encryptPii(bankCardNo), openId || null, openRegistration ? 'verified' : 'pending', openRegistration ? 'registration_bypass' : 'unverified');
-  const user = db.prepare('SELECT id,name,real_name as realName,phone,id_number as idNumber,bank_card_no as bankCardNo,verification_status as verificationStatus,verification_source as verificationSource,open_id as openId,created_at as createdAt FROM users WHERE id=?').get(userId) as Record<string, unknown>;
+  db.prepare('INSERT INTO users (id,name,real_name,phone,phone_hash,id_number,bank_card_no,open_id,entry_id,verification_status,verification_source) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(userId, displayName, realName || name || displayName, encryptPii(phone), phoneHash, encryptPii(idNumber), encryptPii(bankCardNo), openId || null, selectedEntry.id, openRegistration ? 'verified' : 'pending', openRegistration ? 'registration_bypass' : 'unverified');
+  const user = db.prepare(`${userSelect('WHERE u.id=?')}`).get(userId) as Record<string, unknown>;
   startRoleSession(req, res, 'translator', userId);
-  audit(req, 'translator.register', 'user', userId, { registrationMode: openRegistration ? 'open' : 'standard', externalVerificationPerformed: false });
+  audit(req, 'translator.register', 'user', userId, { registrationMode: openRegistration ? 'open' : 'standard', externalVerificationPerformed: false, entryCode: selectedEntry.code, entryChannel: selectedEntry.channel });
   res.status(201).json({ user: publicUser(user), expiresIn: SESSION_TTL_SECONDS });
 });
 
 app.get('/api/auth/session', (req, res) => {
   const session = currentSession(req, 'translator');
   if (!session?.userId) { res.status(401).json({ authenticated: false }); return; }
-  const user = db.prepare('SELECT id,name,real_name as realName,phone,id_number as idNumber,bank_card_no as bankCardNo,verification_status as verificationStatus,verification_source as verificationSource,open_id as openId,created_at as createdAt FROM users WHERE id=?').get(session.userId) as Record<string, unknown> | undefined;
+  const user = db.prepare(`${userSelect('WHERE u.id=?')}`).get(session.userId) as Record<string, unknown> | undefined;
   if (!user) { res.status(401).json({ authenticated: false }); return; }
   res.json({ authenticated: true, user: publicUser(user), expiresAt: session.expiresAt });
 });
 
 app.get('/api/users/:userId', translatorOnly, (req, res) => {
-  const user = db.prepare('SELECT id,name,real_name as realName,phone,id_number as idNumber,bank_card_no as bankCardNo,verification_status as verificationStatus,verification_source as verificationSource,open_id as openId,created_at as createdAt FROM users WHERE id=?').get(req.params.userId) as Record<string, unknown> | undefined;
+  const user = db.prepare(`${userSelect('WHERE u.id=?')}`).get(req.params.userId) as Record<string, unknown> | undefined;
   if (!user) { res.status(404).json({ error: '用户不存在' }); return; }
   res.json({ user: publicUser(user) });
 });
@@ -500,19 +627,20 @@ app.get('/api/users/:userId', translatorOnly, (req, res) => {
 app.get('/api/admin/users', adminOnly, (req, res) => {
   audit(req, 'admin.users.list', 'user', null, { status: req.query.status || 'all' });
   const status = ['pending', 'verified', 'rejected'].includes(String(req.query.status)) ? String(req.query.status) : null;
-  const users = db.prepare(`SELECT id,name,real_name as realName,phone,id_number as idNumber,
-    bank_card_no as bankCardNo,verification_status as verificationStatus,verification_source as verificationSource,open_id as openId,created_at as createdAt
-    FROM users WHERE (? IS NULL OR verification_status=?) ORDER BY created_at DESC`).all(status, status) as Array<Record<string, unknown>>;
+  const entryCode = typeof req.query.entryCode === 'string' && req.query.entryCode.trim() ? req.query.entryCode.trim() : null;
+  const users = db.prepare(`${userSelect(`WHERE (? IS NULL OR u.verification_status=?) AND (? IS NULL OR e.code=?) ORDER BY u.created_at DESC`)}`).all(status, status, entryCode, entryCode) as Array<Record<string, unknown>>;
   res.json({ users: users.map(publicUser) });
 });
 
-app.get('/api/admin/volunteers', adminOnly, (_req, res) => {
-  const volunteers = db.prepare(`SELECT u.id,u.name,u.verification_status AS verificationStatus,u.verification_source AS verificationSource,
+app.get('/api/admin/volunteers', adminOnly, (req, res) => {
+  const entryCode = typeof req.query.entryCode === 'string' && req.query.entryCode.trim() ? req.query.entryCode.trim() : null;
+  const volunteers = db.prepare(`SELECT u.id,u.name,u.entry_id AS entryId,e.code AS entryCode,e.name AS entryName,e.channel AS entryChannel,
+    u.verification_status AS verificationStatus,u.verification_source AS verificationSource,
     (SELECT COUNT(*) FROM assignments x WHERE x.user_id=u.id) AS assignedCount,
     (SELECT COUNT(*) FROM assignments x WHERE x.user_id=u.id AND x.status='assigned') AS activeCount,
     (SELECT COUNT(*) FROM translations t WHERE t.user_id=u.id) AS submittedCount,
     (SELECT COUNT(*) FROM translations t WHERE t.user_id=u.id AND t.status='accepted') AS acceptedCount
-    FROM users u ORDER BY u.created_at DESC,u.id`).all();
+    FROM users u LEFT JOIN entry_points e ON e.id=u.entry_id WHERE (? IS NULL OR e.code=?) ORDER BY u.created_at DESC,u.id`).all(entryCode, entryCode);
   res.json({ volunteers });
 });
 
@@ -521,7 +649,7 @@ app.patch('/api/admin/users/:userId/verification', adminOnly, (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'status 必须为 pending、verified 或 rejected' }); return; }
   const result = db.prepare("UPDATE users SET verification_status=?,verification_source='manual' WHERE id=?").run(parsed.data.status, req.params.userId);
   if (!result.changes) { res.status(404).json({ error: '用户不存在' }); return; }
-  const user = db.prepare('SELECT id,name,real_name as realName,phone,id_number as idNumber,bank_card_no as bankCardNo,verification_status as verificationStatus,verification_source as verificationSource,open_id as openId,created_at as createdAt FROM users WHERE id=?').get(req.params.userId) as Record<string, unknown>;
+  const user = db.prepare(`${userSelect('WHERE u.id=?')}`).get(req.params.userId) as Record<string, unknown>;
   audit(req, 'admin.user.verification', 'user', String(req.params.userId), { status: parsed.data.status });
   res.json({ user: publicUser(user) });
 });
@@ -721,16 +849,18 @@ app.get('/api/admin/translations', adminOnly, (req, res) => {
   const status = filterStatus && filterStatus !== 'all' ? String(filterStatus) : null;
   const articleId = typeof req.query.articleId === 'string' ? req.query.articleId : null;
   const userId = typeof req.query.userId === 'string' ? req.query.userId : null;
+  const entryCode = typeof req.query.entryCode === 'string' && req.query.entryCode.trim() ? req.query.entryCode.trim() : null;
   const translations = db.prepare(`SELECT t.id,t.content,t.status,t.created_at as createdAt,t.reviewed_at as reviewedAt,
       ${reviewFieldsSql()},
       u.id as userId,u.name as userName,s.id as sentenceId,s.position,s.source_text as sourceText,
       s.translator_slots as translatorSlots,s.translation_suggestion as translationSuggestion,
       s.suggestion_status as suggestionStatus,s.suggestion_error as suggestionError,s.suggestion_retry_at as suggestionRetryAt,
-      a.id as articleId,a.title,a.title AS articleTitle,a.task_unit as taskUnit,a.source_language as sourceLanguage,a.target_language as targetLanguage
-    FROM translations t JOIN users u ON u.id=t.user_id JOIN sentences s ON s.id=t.sentence_id JOIN articles a ON a.id=s.article_id
+      a.id as articleId,a.title,a.title AS articleTitle,a.task_unit as taskUnit,a.source_language as sourceLanguage,a.target_language as targetLanguage,
+      u.entry_id as entryId,e.code as entryCode,e.name as entryName,e.channel as entryChannel
+    FROM translations t JOIN users u ON u.id=t.user_id LEFT JOIN entry_points e ON e.id=u.entry_id JOIN sentences s ON s.id=t.sentence_id JOIN articles a ON a.id=s.article_id
     WHERE (? IS NULL OR ${status === 'rejected' ? 't.status' : reviewStatusSql()}=?)
-      AND (? IS NULL OR a.id=?) AND (? IS NULL OR u.id=?)
-    ORDER BY t.created_at DESC,t.id`).all(status, status, articleId, articleId, userId, userId);
+      AND (? IS NULL OR a.id=?) AND (? IS NULL OR u.id=?) AND (? IS NULL OR e.code=?)
+    ORDER BY t.created_at DESC,t.id`).all(status, status, articleId, articleId, userId, userId, entryCode, entryCode);
   res.json({ translations });
 });
 
@@ -785,25 +915,29 @@ function csvCell(value: unknown): string {
 }
 
 app.get('/api/admin/reports/export.csv', adminOnly, (req, res) => {
-  audit(req, 'admin.report.export', 'report', null, { articleId: req.query.articleId || 'all' });
+  audit(req, 'admin.report.export', 'report', null, { articleId: req.query.articleId || 'all', entryCode: req.query.entryCode || 'all' });
   const articleId = typeof req.query.articleId === 'string' ? req.query.articleId : null;
+  const entryCode = typeof req.query.entryCode === 'string' && req.query.entryCode.trim() ? req.query.entryCode.trim() : null;
   const rows = db.prepare(`SELECT a.title as articleTitle,s.position,s.source_text as sourceText,
-      t.content,t.status,${reviewFieldsSql()},t.created_at as createdAt,t.reviewed_at as reviewedAt,u.name as userName
+      t.content,t.status,${reviewFieldsSql()},t.created_at as createdAt,t.reviewed_at as reviewedAt,u.name as userName,
+      e.code as entryCode,e.name as entryName
     FROM translations t JOIN sentences s ON s.id=t.sentence_id JOIN articles a ON a.id=s.article_id
-    JOIN users u ON u.id=t.user_id WHERE (? IS NULL OR a.id=?) ORDER BY a.created_at DESC,s.position,t.created_at ASC`).all(articleId, articleId) as Array<Record<string, unknown>>;
-  const header = ['文章', '句序', '原文', '译文', '状态', '译者', '提交时间', '审核时间', '版本', '审核意见'];
+    JOIN users u ON u.id=t.user_id LEFT JOIN entry_points e ON e.id=u.entry_id
+    WHERE (? IS NULL OR a.id=?) AND (? IS NULL OR e.code=?) ORDER BY a.created_at DESC,s.position,t.created_at ASC`).all(articleId, articleId, entryCode, entryCode) as Array<Record<string, unknown>>;
+  const header = ['文章', '句序', '原文', '译文', '状态', '译者', '入口编码', '入口名称', '提交时间', '审核时间', '版本', '审核意见'];
   const statusNames: Record<string, string> = { pending: '待审核', accepted: '已采纳', returned: '退回重译', not_selected: '未采纳' };
-  const lines = rows.map((row) => [row.articleTitle, row.position, row.sourceText, row.content, statusNames[String(row.reviewStatus)], row.userName, row.createdAt, row.reviewedAt, row.revision, row.reviewNote].map(csvCell).join(','));
+  const lines = rows.map((row) => [row.articleTitle, row.position, row.sourceText, row.content, statusNames[String(row.reviewStatus)], row.userName, row.entryCode, row.entryName, row.createdAt, row.reviewedAt, row.revision, row.reviewNote].map(csvCell).join(','));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="translation-report-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(`\ufeff${header.join(',')}\n${lines.join('\n')}`);
 });
 
 app.get('/api/admin/reports', adminOnly, (req, res) => {
-  audit(req, 'admin.report.read', 'report', null, { articleId: req.query.articleId || 'all' });
+  audit(req, 'admin.report.read', 'report', null, { articleId: req.query.articleId || 'all', entryCode: req.query.entryCode || 'all' });
   const articleId = typeof req.query.articleId === 'string' ? req.query.articleId : null;
-  const where = articleId ? 'WHERE a.id=?' : '';
-  const args = articleId ? [articleId] : [];
+  const entryCode = typeof req.query.entryCode === 'string' && req.query.entryCode.trim() ? req.query.entryCode.trim() : null;
+  const where = `WHERE (? IS NULL OR a.id=?) AND (? IS NULL OR ex.code=? OR et.code=?)`;
+  const args = [articleId, articleId, entryCode, entryCode, entryCode];
   const totals = db.prepare(`SELECT COUNT(DISTINCT s.id) as sentenceCount,
     COUNT(DISTINCT CASE WHEN x.id IS NOT NULL THEN s.id END) as assignedSentenceCount,
     COUNT(DISTINCT t.id) as translationCount,
@@ -811,7 +945,9 @@ app.get('/api/admin/reports', adminOnly, (req, res) => {
     COUNT(DISTINCT CASE WHEN t.status='pending' THEN t.id END) as pendingTranslationCount,
     COUNT(DISTINCT CASE WHEN ${reviewStatusSql()}='returned' THEN t.id END) as returnedTranslationCount,
     COUNT(DISTINCT CASE WHEN ${reviewStatusSql()}='not_selected' THEN t.id END) as notSelectedTranslationCount
-    FROM articles a LEFT JOIN sentences s ON s.article_id=a.id LEFT JOIN assignments x ON x.sentence_id=s.id LEFT JOIN translations t ON t.sentence_id=s.id ${where}`).get(...args);
+    FROM articles a LEFT JOIN sentences s ON s.article_id=a.id LEFT JOIN assignments x ON x.sentence_id=s.id
+    LEFT JOIN users ux ON ux.id=x.user_id LEFT JOIN entry_points ex ON ex.id=ux.entry_id
+    LEFT JOIN translations t ON t.sentence_id=s.id LEFT JOIN users ut ON ut.id=t.user_id LEFT JOIN entry_points et ON et.id=ut.entry_id ${where}`).get(...args);
   const translators = db.prepare(`SELECT u.id as userId,u.name,
       COUNT(DISTINCT CASE WHEN ${articleId ? 'a.id=?' : '1=1'} THEN x.id END) as assignedCount,
       COUNT(DISTINCT CASE WHEN ${articleId ? 'a.id=?' : '1=1'} THEN t.id END) as submittedCount,
@@ -819,15 +955,17 @@ app.get('/api/admin/reports', adminOnly, (req, res) => {
       COUNT(DISTINCT CASE WHEN ${articleId ? 'a.id=? AND' : ''} t.status='pending' THEN t.id END) as pendingCount,
       COUNT(DISTINCT CASE WHEN ${articleId ? 'a.id=? AND' : ''} ${reviewStatusSql()}='returned' THEN t.id END) as returnedCount,
       COUNT(DISTINCT CASE WHEN ${articleId ? 'a.id=? AND' : ''} ${reviewStatusSql()}='not_selected' THEN t.id END) as notSelectedCount
-    FROM users u LEFT JOIN assignments x ON x.user_id=u.id LEFT JOIN sentences s ON s.id=x.sentence_id LEFT JOIN articles a ON a.id=s.article_id
+    FROM users u LEFT JOIN entry_points e ON e.id=u.entry_id LEFT JOIN assignments x ON x.user_id=u.id LEFT JOIN sentences s ON s.id=x.sentence_id LEFT JOIN articles a ON a.id=s.article_id
     LEFT JOIN translations t ON t.user_id=u.id AND t.sentence_id=s.id
-    GROUP BY u.id ORDER BY acceptedCount DESC,submittedCount DESC`).all(...(articleId ? Array(6).fill(articleId) : []));
+    WHERE (? IS NULL OR e.code=?) GROUP BY u.id ORDER BY acceptedCount DESC,submittedCount DESC`).all(...(articleId ? [...Array(6).fill(articleId), entryCode, entryCode] : [entryCode, entryCode]));
   const acceptedBySentence = db.prepare(`SELECT s.id as sentenceId,s.position,s.source_text as sourceText,
-      t.id as translationId,t.content,t.created_at as createdAt,u.id as userId,u.name as userName
+      t.id as translationId,t.content,t.created_at as createdAt,u.id as userId,u.name as userName,
+      e.code as entryCode,e.name as entryName
     FROM sentences s JOIN articles a ON a.id=s.article_id
     JOIN translations t ON t.sentence_id=s.id AND t.status='accepted'
-    JOIN users u ON u.id=t.user_id ${where} ORDER BY a.created_at DESC,s.position`).all(...args);
-  res.json({ scope: articleId || 'all', totals, translators, acceptedBySentence });
+    JOIN users u ON u.id=t.user_id LEFT JOIN entry_points e ON e.id=u.entry_id
+    WHERE (? IS NULL OR a.id=?) AND (? IS NULL OR e.code=?) ORDER BY a.created_at DESC,s.position`).all(articleId, articleId, entryCode, entryCode);
+  res.json({ scope: articleId || 'all', entryCode: entryCode || 'all', totals, translators, acceptedBySentence });
 });
 
 app.use((_req, res) => res.status(404).json({ error: '接口不存在' }));

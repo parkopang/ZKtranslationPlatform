@@ -6,6 +6,10 @@ import { decryptPii, encryptPii, hashPii } from './pii.js';
 import { reviewStatusSql } from './reviews.js';
 import { createMysqlDb } from './mysql-db.js';
 
+// Stable built-in entry used by existing registrations and records created
+// before multi-channel entry management was introduced.
+export const DEFAULT_ENTRY_ID = '00000000-0000-4000-8000-000000000001';
+
 export interface DBStatement {
   get: (...params: unknown[]) => unknown;
   all: (...params: unknown[]) => unknown[];
@@ -39,8 +43,19 @@ function createSqliteDb(dbPath: string): DB {
       id_number TEXT,
       bank_card_no TEXT,
       verification_status TEXT NOT NULL DEFAULT 'pending' CHECK (verification_status IN ('pending','verified','rejected')),
+      entry_id TEXT,
       open_id TEXT UNIQUE,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS entry_points (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT 'web' CHECK (channel IN ('public_account','mini_program','web')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+      url TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -123,6 +138,10 @@ function createSqliteDb(dbPath: string): DB {
   if (!columns.has('id_number')) db.exec('ALTER TABLE users ADD COLUMN id_number TEXT');
   if (!columns.has('bank_card_no')) db.exec('ALTER TABLE users ADD COLUMN bank_card_no TEXT');
   if (!columns.has('verification_status')) db.exec("ALTER TABLE users ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'pending'");
+  if (!columns.has('entry_id')) db.exec('ALTER TABLE users ADD COLUMN entry_id TEXT');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_users_entry ON users(entry_id);`);
+  db.exec(`INSERT OR IGNORE INTO entry_points (id,code,name,channel,status,url) VALUES ('${DEFAULT_ENTRY_ID}','default','默认入口','web','active',NULL);`);
+  db.exec(`UPDATE users SET entry_id='${DEFAULT_ENTRY_ID}' WHERE entry_id IS NULL OR entry_id='';`);
   if (!columns.has('verification_source')) {
     db.exec("ALTER TABLE users ADD COLUMN verification_source TEXT NOT NULL DEFAULT 'unverified'");
     db.exec("UPDATE users SET verification_source='manual' WHERE verification_status<>'pending'");

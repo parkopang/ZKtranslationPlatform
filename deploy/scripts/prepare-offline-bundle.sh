@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 env_file="${ENV_FILE:-.env}"
 [[ -f "$env_file" ]] || env_file=.env.example
-bundle_tag="${IMAGE_BUNDLE_TAG:-0.2.5}"
+bundle_tag="${IMAGE_BUNDLE_TAG:-0.2.6}"
 bundle_dir="${OFFLINE_BUNDLE_DIR:-offline}"
 archive="$bundle_dir/translation-platform-images-${bundle_tag}.tar.gz"
 manifest="$bundle_dir/translation-platform-images-${bundle_tag}.manifest.txt"
