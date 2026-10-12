@@ -37,7 +37,7 @@ services:
       MYSQL_HOST: ${MYSQL_HOST:-replace-with-mysql-host}
       MYSQL_PORT: ${MYSQL_PORT:-3306}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-replace-with-database-name}
-      MYSQL_USER: ${MYSQL_USER:-replace-with-database-name}
+      MYSQL_USER: ${MYSQL_USER:-replace-with-database-user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
       MYSQL_POOL_SIZE: ${MYSQL_POOL_SIZE:-10}
       MYSQL_CONNECT_TIMEOUT_MS: ${MYSQL_CONNECT_TIMEOUT_MS:-10000}
@@ -54,14 +54,15 @@ services:
       OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
       OPENAI_COMPATIBLE_MODEL: ${OPENAI_COMPATIBLE_MODEL:-plmf/glm-5.3-flash}
       OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-https://provider.example.invalid/v2/openai/completions}
+      OPENAI_COMPATIBLE_ALLOWED_ORIGIN: ${OPENAI_COMPATIBLE_ALLOWED_ORIGIN:-https://provider.example.invalid}
       BIGMODEL_KEY_TYPE: ${BIGMODEL_KEY_TYPE:-coding_plan}
       BIGMODEL_API_KEY: ${BIGMODEL_API_KEY:-}
       BIGMODEL_MODEL: ${BIGMODEL_MODEL:-glm-5.3-flash}
-      BIGMODEL_BASE_URL: ${BIGMODEL_BASE_URL:-https://bigmodel.example.test/api/coding/paas/v4/chat/completions}
+      BIGMODEL_BASE_URL: ${BIGMODEL_BASE_URL:-https://provider.example.invalid/api/coding/paas/v4/chat/completions}
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
       MINIMAX_KEY_TYPE: ${MINIMAX_KEY_TYPE:-platform_api}
       MINIMAX_MODEL: ${MINIMAX_MODEL:-MiniMax-M2.7}
-      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://minimax.example.test/v1/chat/completions}
+      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://provider.example.invalid/v1/chat/completions}
       LLM_RATE_LIMIT_DELAY_MS: ${LLM_RATE_LIMIT_DELAY_MS:-60000}
       LLM_FAILURE_COOLDOWN_MS: ${LLM_FAILURE_COOLDOWN_MS:-60000}
       LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-2}
@@ -107,12 +108,12 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD:-change-me}@replace-with-redis-host:6379/20}
       QUEUE_KEY_PREFIX: ${QUEUE_KEY_PREFIX:-translation}
       COS_BASE_URL: ${COS_BASE_URL:-https://replace-with-cos-host}
-      COS_ENDPOINT: ${COS_ENDPOINT:-https://cos.ap-guangzhou.myqcloud.com}
+      COS_ENDPOINT: ${COS_ENDPOINT:-https://replace-with-cos-signing-endpoint}
       COS_BUCKET: ${COS_BUCKET:-replace-with-cos-bucket}
       COS_REGION: ${COS_REGION:-ap-guangzhou}
       COS_ACCESS_KEY: ${COS_ACCESS_KEY:-}
       COS_SECRET_KEY: ${COS_SECRET_KEY:-}
-      S3_ENDPOINT: ${S3_ENDPOINT:-https://cos.ap-guangzhou.myqcloud.com}
+      S3_ENDPOINT: ${S3_ENDPOINT:-https://replace-with-cos-signing-endpoint}
       S3_BUCKET: ${S3_BUCKET:-replace-with-cos-bucket}
       S3_REGION: ${S3_REGION:-ap-guangzhou}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}

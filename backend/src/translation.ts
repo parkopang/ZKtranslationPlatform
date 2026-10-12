@@ -96,6 +96,9 @@ function settingsForProvider(env: Environment, provider: ModelProvider, rawProvi
       : keyType === 'coding_plan'
         ? 'https://bigmodel.example.test/api/coding/paas/v4/chat/completions'
         : 'https://bigmodel.example.test/api/paas/v4/chat/completions');
+  const allowedOrigin = env[`${prefix}_ALLOWED_ORIGIN`]?.trim() || (provider === 'bigmodel'
+    ? 'https://bigmodel.example.test'
+    : provider === 'minimax' ? 'https://minimax.example.test' : provider === 'openai_compatible' ? 'https://provider.example.test' : '');
   let error: string | undefined;
   if (!normalizeProvider(rawProvider)) error = 'unsupported_llm_provider';
   else if (provider === 'minimax' && (keyType === 'token_plan' || /^sk-cp/i.test(apiKey)) && env.NODE_ENV === 'production') {
@@ -114,7 +117,7 @@ function settingsForProvider(env: Environment, provider: ModelProvider, rawProvi
       error ||= 'invalid_model_endpoint';
     }
     // Catch accidental provider switches without forwarding a key to the other vendor.
-    const otherVendor = provider === 'minimax' ? /(^|\.)bigmodel\.cn$/ : /(^|\.)(minimax\.(cn|io)|minimaxi\.com)$/;
+    const otherVendor = provider === 'minimax' ? /(^|\.)(bigmodel\.cn|bigmodel\.example\.test)$/ : /(^|\.)(minimax\.(cn|io)|minimaxi\.com|minimax\.example\.test)$/;
     if (otherVendor.test(endpoint.hostname)) error ||= 'model_endpoint_provider_mismatch';
     if (provider === 'bigmodel') {
       // Explicit technical compatibility only: a valid local configuration is not
@@ -122,12 +125,13 @@ function settingsForProvider(env: Environment, provider: ModelProvider, rawProvi
       // Never silently reroute a subscription request to a metered standard endpoint.
       const expectedPath = keyType === 'coding_plan' ? '/api/coding/paas/v4/chat/completions' : '/api/paas/v4/chat/completions';
       if (endpoint.pathname.replace(/\/+$/, '') !== expectedPath) error ||= 'bigmodel_endpoint_key_type_mismatch';
-      if (endpoint.origin !== 'https://bigmodel.example.test' && !localMock) error ||= 'bigmodel_endpoint_not_allowed';
+      if (allowedOrigin && endpoint.origin !== allowedOrigin && !localMock) error ||= 'bigmodel_endpoint_not_allowed';
     }
     if (provider === 'openai_compatible') {
       const expectedPath = '/v2/openai/completions';
       if (endpoint.pathname.replace(/\/+$/, '') !== expectedPath) error ||= 'openai_compatible_endpoint_path_invalid';
-      if (endpoint.origin !== 'https://provider.example.invalid' && !localMock) error ||= 'openai_compatible_endpoint_not_allowed';
+      if (env.NODE_ENV === 'production' && !allowedOrigin) error ||= 'openai_compatible_allowed_origin_missing';
+      if (allowedOrigin && endpoint.origin !== allowedOrigin && !localMock) error ||= 'openai_compatible_endpoint_not_allowed';
     }
 
   } catch { error ||= 'invalid_model_endpoint'; }

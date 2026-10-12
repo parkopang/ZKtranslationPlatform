@@ -3,7 +3,7 @@
 import {ProxyAgent,Pool} from 'undici';
 import {isIP} from 'node:net';
 if(process.env.SIMULATION_ENV!=='true')throw new Error('Local network adapter requires explicit test environment');
-const origin=process.env.SIMULATION_MODEL_ORIGIN || 'https://bigmodel.example.test';
+const origin=process.env.SIMULATION_MODEL_ORIGIN || 'https://provider.example.invalid';
 const serverName=process.env.SIMULATION_MODEL_SERVER_NAME || new URL(origin).hostname;
 const address=process.env.SIMULATION_MODEL_ADDRESS;
 const proxy=process.env.SIMULATION_MODEL_PROXY;

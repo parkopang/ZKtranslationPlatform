@@ -13,7 +13,7 @@ services:
       BIGMODEL_KEY_TYPE: ${BIGMODEL_KEY_TYPE:-platform_api}
       BIGMODEL_API_KEY: ${BIGMODEL_API_KEY:-}
       BIGMODEL_MODEL: ${BIGMODEL_MODEL:-glm-5.3-flash}
-      BIGMODEL_BASE_URL: ${BIGMODEL_BASE_URL:-https://bigmodel.example.test/api/paas/v4/chat/completions}
+      BIGMODEL_BASE_URL: ${BIGMODEL_BASE_URL:-https://provider.example.invalid/api/paas/v4/chat/completions}
       REDIS_URL: ${REDIS_URL:-}
       PRETRANSLATE_WORKERS: ${PRETRANSLATE_WORKERS:-2}
       S3_ENDPOINT: ${S3_ENDPOINT:-}

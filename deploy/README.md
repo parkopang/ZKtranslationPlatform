@@ -6,7 +6,7 @@
 
 | 组件 | 生产地址/配置 | 作用 |
 | --- | --- | --- |
-| MySQL | 内网 `replace-with-mysql-host:3306`，库 `replace-with-database-name` | 用户、文章、句段、译文、审核和审计 |
+| MySQL | 内网 `replace-with-mysql-host:3306`，库 `<database-name>` | 用户、文章、句段、译文、审核和审计 |
 | MySQL 维护入口 | 外网 `replace-with-maintenance-mysql-host:23778`（公司办公网白名单） | 运维迁移、备份和故障处理 |
 | Redis | `replace-with-redis-host:6379`，DB `20` | 预翻译队列和去重租约 |
 | COS | `replace-with-cos-bucket`，区域 `ap-guangzhou` | 原始文件和签名下载 |
@@ -33,7 +33,7 @@ DB_ENGINE=mysql
 MYSQL_HOST=replace-with-mysql-host
 MYSQL_PORT=3306
 MYSQL_DATABASE=replace-with-database-name
-MYSQL_USER=replace-with-database-name
+MYSQL_USER=replace-with-database-user
 MYSQL_PASSWORD=由密钥管理系统注入
 ```
 
@@ -49,7 +49,7 @@ COS 使用 S3 兼容签名端点，公开基址只用于展示/运维：
 
 ```dotenv
 COS_BASE_URL=https://replace-with-cos-host
-COS_ENDPOINT=https://cos.ap-guangzhou.myqcloud.com
+COS_ENDPOINT=https://replace-with-cos-signing-endpoint
 COS_BUCKET=replace-with-cos-bucket
 COS_REGION=ap-guangzhou
 S3_FORCE_PATH_STYLE=false
@@ -63,7 +63,7 @@ LLM_PROVIDER=openai_compatible # 兼容旧配置；设置链后以 LLM_PROVIDER_
 OPENAI_COMPATIBLE_BASE_URL=https://provider.example.invalid/v2/openai/completions
 OPENAI_COMPATIBLE_MODEL=plmf/glm-5.3-flash
 OPENAI_COMPATIBLE_API_KEY=由密钥管理系统注入
-BIGMODEL_BASE_URL=https://bigmodel.example.test/api/coding/paas/v4/chat/completions
+BIGMODEL_BASE_URL=https://provider.example.invalid/api/coding/paas/v4/chat/completions
 BIGMODEL_MODEL=glm-5.3-flash
 BIGMODEL_KEY_TYPE=coding_plan
 BIGMODEL_API_KEY=由密钥管理系统注入

@@ -6,7 +6,7 @@ const successful = (text = '你好。', extra: Record<string, unknown> = {}) => 
 });
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 const environment = (extra: Record<string, string> = {}) => ({
-  NODE_ENV: 'test', LLM_PROVIDER: 'minimax', MINIMAX_API_KEY: 'minimax-test-secret',
+  NODE_ENV: 'test', LLM_PROVIDER: 'minimax', MINIMAX_API_KEY: 'minimax-test-secret', OPENAI_COMPATIBLE_ALLOWED_ORIGIN: 'https://provider.example.test', MINIMAX_BASE_URL: 'https://minimax.example.test/v1/chat/completions', MINIMAX_ALLOWED_ORIGIN: 'https://minimax.example.test', BIGMODEL_BASE_URL: 'https://bigmodel.example.test/api/paas/v4/chat/completions', BIGMODEL_ALLOWED_ORIGIN: 'https://bigmodel.example.test',
   MINIMAX_KEY_TYPE: 'platform_api', LLM_RETRY_ATTEMPTS: '3', LLM_RETRY_BASE_MS: '1',
   LLM_RETRY_MAX_MS: '2', LLM_RATE_LIMIT_DELAY_MS: '1', LLM_REQUEST_TIMEOUT_MS: '500', LLM_TOTAL_TIMEOUT_MS: '1000', ...extra
 });
@@ -19,12 +19,12 @@ await test('OpenAI-compatible Sinohealth endpoint uses the configured model and 
     LLM_PROVIDER: 'openai_compatible',
     OPENAI_COMPATIBLE_API_KEY: 'sinohealth-test-secret',
     OPENAI_COMPATIBLE_MODEL: 'plmf/glm-5.3-flash',
-    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.invalid/v2/openai/completions',
+    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.test/v2/openai/completions',
     LLM_RETRY_ATTEMPTS: '2', LLM_RETRY_BASE_MS: '1', LLM_RETRY_MAX_MS: '1'
   });
   const adapter = createModelAdapter({ env, fetch: async (input, init) => {
     calls += 1;
-    assert.equal(input, 'https://provider.example.invalid/v2/openai/completions');
+    assert.equal(input, 'https://provider.example.test/v2/openai/completions');
     assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer sinohealth-test-secret');
     const body = JSON.parse(String(init?.body));
     assert.equal(body.model, 'plmf/glm-5.3-flash');
@@ -42,7 +42,7 @@ await test('Sinohealth OpenAI-compatible responses accept camelCase finishReason
     LLM_PROVIDER: 'openai_compatible',
     OPENAI_COMPATIBLE_API_KEY: 'sinohealth-authorized-test-secret',
     OPENAI_COMPATIBLE_MODEL: 'plmf/glm-5.3-flash',
-    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.invalid/v2/openai/completions',
+    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.test/v2/openai/completions',
     OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '1'
   });
   let calls = 0;
@@ -78,7 +78,7 @@ await test('Sinohealth camelCase length responses remain truncated and are not r
     LLM_PROVIDER: 'openai_compatible',
     OPENAI_COMPATIBLE_API_KEY: 'sinohealth-authorized-test-secret',
     OPENAI_COMPATIBLE_MODEL: 'plmf/glm-5.3-flash',
-    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.invalid/v2/openai/completions',
+    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.test/v2/openai/completions',
     OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '3'
   }), fetch: async () => {
     calls += 1;

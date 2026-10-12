@@ -8,7 +8,7 @@
 - `backend/`：Node.js + Express，支持 DOCX/TXT 导入、MySQL/SQLite、Redis 预翻译队列、腾讯 COS、PII 加密、审核版本和报表。
 - `deploy/`：生产 Compose、MySQL/Redis/COS 配置模板、健康检查、模型检查、镜像发布和离线归档脚本。
 
-生产镜像会使用已验收的版本标签（当前发布线为 0.2.6），连接 MySQL `replace-with-database-name`、内网 Redis DB 20、腾讯 COS 和模型主备网关；本机模拟环境通过 Compose `simulation` profile 使用独立 SQLite/Redis/MinIO，不会污染生产数据。完整运维步骤见 [deploy/README.md](deploy/README.md)。
+生产镜像会使用已验收的版本标签（当前发布线为 0.2.6），连接 MySQL `<database-name>`、内网 Redis DB 20、腾讯 COS 和模型主备网关；本机模拟环境通过 Compose `simulation` profile 使用独立 SQLite/Redis/MinIO，不会污染生产数据。完整运维步骤见 [deploy/README.md](deploy/README.md)。
 
 ## 本地开发
 
@@ -48,7 +48,7 @@ LLM_PROVIDER=openai_compatible
 OPENAI_COMPATIBLE_BASE_URL=https://provider.example.invalid/v2/openai/completions
 OPENAI_COMPATIBLE_MODEL=plmf/glm-5.3-flash
 OPENAI_COMPATIBLE_API_KEY=由密钥管理系统注入
-BIGMODEL_BASE_URL=https://bigmodel.example.test/api/coding/paas/v4/chat/completions
+BIGMODEL_BASE_URL=https://provider.example.invalid/api/coding/paas/v4/chat/completions
 BIGMODEL_MODEL=glm-5.3-flash
 BIGMODEL_KEY_TYPE=coding_plan
 BIGMODEL_API_KEY=由密钥管理系统注入
