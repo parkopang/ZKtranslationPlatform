@@ -40,6 +40,8 @@ button { border: 0; cursor: pointer; color: inherit; }
 .translator-page { min-height: 100vh; background: #f7f9fc; padding-bottom: 36px; }
 .mobile-topbar { position: relative; max-width: 620px; margin: 0 auto; padding: 22px 27px 10px; display: flex; align-items: center; justify-content: space-between; }
 .top-actions { display: flex; align-items: center; gap: 2px; }
+.wechat-entry-chip { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; padding: 5px 8px; border: 1px solid #d9e7ff; border-radius: 999px; color: #3b6fc9; background: #f2f7ff; font-size: 10px; white-space: nowrap; }
+.entry-description { margin: 8px 0 0; color: #7f8da2; font-size: 12px; line-height: 1.55; }
 .profile-popover { position: absolute; z-index: 20; top: 65px; right: 58px; width: 172px; padding: 14px; border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(31, 47, 74, .16); display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
 .profile-popover span { color: var(--muted); font-size: 11px; }
 .profile-popover button { background: none; color: var(--primary); font-size: 12px; text-align: left; padding: 6px 0 0; }
@@ -94,7 +96,7 @@ button { border: 0; cursor: pointer; color: inherit; }
 .tip-card p { margin: 3px 0 0; color: #af9673; font-size: 11px; line-height: 1.5; }
 .tip-card button { margin-left: auto; padding: 3px; color: #b8a98f; background: transparent; }
 .translator-footer { display: flex; justify-content: center; align-items: center; gap: 5px; margin-top: 19px; color: #a8b0bd; font-size: 10px; }
-.bottom-nav { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: none; height: 64px; padding: 5px max(18px, calc((100vw - 440px) / 2)); border-top: 1px solid #e6eaf1; background: rgba(255, 255, 255, .96); backdrop-filter: blur(12px); }
+.bottom-nav { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: none; height: calc(64px + env(safe-area-inset-bottom)); padding: 5px max(18px, calc((100vw - 440px) / 2)) env(safe-area-inset-bottom); border-top: 1px solid #e6eaf1; background: rgba(255, 255, 255, .96); backdrop-filter: blur(12px); }
 .bottom-nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #a3adbc; background: transparent; font-size: 10px; }
 .bottom-nav button.active { color: var(--primary); }
 

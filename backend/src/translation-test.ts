@@ -37,6 +37,60 @@ await test('OpenAI-compatible Sinohealth endpoint uses the configured model and 
   assert.equal(calls, 2);
 });
 
+await test('Sinohealth OpenAI-compatible responses accept camelCase finishReason', async () => {
+  const env = environment({
+    LLM_PROVIDER: 'openai_compatible',
+    OPENAI_COMPATIBLE_API_KEY: 'sinohealth-authorized-test-secret',
+    OPENAI_COMPATIBLE_MODEL: 'plmf/glm-5.3-flash',
+    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.invalid/v2/openai/completions',
+    OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '1'
+  });
+  let calls = 0;
+  const adapter = createModelAdapter({ env, fetch: async () => {
+    calls += 1;
+    return json({
+      choices: [{
+        index: 0,
+        finishReason: 'stop',
+        finish_reason: undefined,
+        message: {
+          role: 'assistant',
+          content: '欢迎加入我们的翻译社区。',
+          reasoning: 'private reasoning must never be returned by the adapter'
+        }
+      }],
+      error: null,
+      object: 'chat.completion',
+      provider: 'sinohealth'
+    });
+  } });
+  const result = await adapter.pretranslate('Welcome to our translation community.', '简体中文');
+  assert.equal(result.provider, 'openai_compatible');
+  assert.equal(result.text, '欢迎加入我们的翻译社区。');
+  assert.equal(result.attempts, 1);
+  assert.equal(calls, 1);
+  assert(!JSON.stringify(result).includes('private reasoning'));
+});
+
+await test('Sinohealth camelCase length responses remain truncated and are not retried', async () => {
+  let calls = 0;
+  const adapter = createModelAdapter({ env: environment({
+    LLM_PROVIDER: 'openai_compatible',
+    OPENAI_COMPATIBLE_API_KEY: 'sinohealth-authorized-test-secret',
+    OPENAI_COMPATIBLE_MODEL: 'plmf/glm-5.3-flash',
+    OPENAI_COMPATIBLE_BASE_URL: 'https://provider.example.invalid/v2/openai/completions',
+    OPENAI_COMPATIBLE_RETRY_ATTEMPTS: '3'
+  }), fetch: async () => {
+    calls += 1;
+    return json({ choices: [{ finishReason: 'length', message: { role: 'assistant', content: '' } }] });
+  } });
+  const result = await adapter.pretranslate('long source', '简体中文');
+  assert.equal(result.error, 'provider_truncated_response');
+  assert.equal(result.retryable, false);
+  assert.equal(result.attempts, 1);
+  assert.equal(calls, 1);
+});
+
 await test('explicit provider and key isolation; backwards-compatible BigModel defaults', async () => {
   let called = 0;
   const env = environment({ BIGMODEL_API_KEY: 'bigmodel-only-secret' });

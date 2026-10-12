@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Activity, ArrowRight, BarChart3, BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-  ClipboardCheck, Clock3, FileText, Globe2, LayoutDashboard, Menu, MoreHorizontal, Plus,
+  ClipboardCheck, Clock3, ExternalLink, FileText, Globe2, LayoutDashboard, Menu, MoreHorizontal, Plus,
   Search, Settings2, ShieldCheck, Sparkles, UploadCloud, Users, X,
 } from 'lucide-react'
 import { api, isDemo, mockArticles, mockSegments, setAdminKey, taskDraftKey, taskEditable, taskUnitLabel, type Article, type Segment, type TaskUnit } from './api'
@@ -13,7 +13,7 @@ import { timeLabel } from './review-format'
 import { RevisionHistory } from './RevisionHistory'
 import { TaskResults } from './TaskResults'
 import { useLiveSync } from './useLiveSync'
-import { workspaceRole } from './workspace'
+import { workspaceEntry, workspaceRole, type WorkspaceChannel } from './workspace'
 
 type Mode = 'translator' | 'admin'
 type AdminSection = 'overview' | 'articles' | 'segments' | 'reports'
@@ -23,7 +23,8 @@ const todayLabel = new Intl.DateTimeFormat('zh-CN', { weekday: 'short', month: '
 const liveApi = !isDemo
 
 function App() {
-  const [mode, setMode] = useState<Mode>(() => workspaceRole(window.location.search, sessionStorage.getItem('zk_workspace')))
+  const [mode, setMode] = useState<Mode>(() => workspaceRole(window.location.search, sessionStorage.getItem('zk_workspace'), window.location.pathname))
+  const entry = workspaceEntry(window.location.search, window.location.pathname)
   const [adminSection, setAdminSection] = useState<AdminSection>('overview')
   const [tasks, setTasks] = useState<Segment[]>(isDemo ? mockSegments.slice(0, 3) : [])
   const [segments, setSegments] = useState<Segment[]>(isDemo ? mockSegments : [])
@@ -37,6 +38,10 @@ function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const identity = useRef<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    document.title = entry.isDoctor ? '医生端 · 译链' : '译链 · 众人共译平台'
+  }, [entry.isDoctor])
 
   useEffect(() => {
     sessionStorage.setItem('zk_workspace', mode)
@@ -160,7 +165,7 @@ function App() {
   return (
     <div className="app-root">
       {mode === 'translator' ? (
-        <TranslatorView key={translatorSession} authenticated={identityVerified} tasks={identityVerified ? tasks : []} drafts={identityVerified ? drafts : {}} onDraft={(id, text) => setDrafts((current) => ({ ...current, [id]: text }))} selectedTaskId={selectedTaskId} onSelect={setSelectedTaskId} onSubmit={submit} onClaim={claimTasks} onRegistrationStart={() => taskSync.pause()} onRegistrationEnd={() => taskSync.resume()} onRegistered={() => taskSync.refresh()} onSwitch={() => void enterAdmin()} onLogout={() => void logout()} loading={loading} />
+        <TranslatorView key={translatorSession} authenticated={identityVerified} tasks={identityVerified ? tasks : []} drafts={identityVerified ? drafts : {}} onDraft={(id, text) => setDrafts((current) => ({ ...current, [id]: text }))} selectedTaskId={selectedTaskId} onSelect={setSelectedTaskId} onSubmit={submit} onClaim={claimTasks} onRegistrationStart={() => taskSync.pause()} onRegistrationEnd={() => taskSync.resume()} onRegistered={() => taskSync.refresh()} onSwitch={() => void enterAdmin()} onLogout={() => void logout()} loading={loading} isDoctor={entry.isDoctor} channel={entry.channel} />
       ) : (
         <AdminView section={adminSection} setSection={setAdminSection} segments={segments} articles={articles} summary={summary} onRefreshArticles={() => adminSync.refresh()} onArticleUpdated={articleUpdated} onReviewChanged={reviewChanged} onImport={importArticle} onExport={exportReport} onSwitch={() => { setIdentityVerified(isDemo); setLoading(!isDemo); setMode('translator') }} />
       )}
@@ -174,7 +179,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return <div className={`brand ${compact ? 'brand-compact' : ''}`}><span className="brand-mark"><Globe2 size={20} strokeWidth={2.4} /></span><span><b>译链</b>{!compact && <small>众人共译平台</small>}</span></div>
 }
 
-function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId, onSelect, onSubmit, onClaim, onRegistered, onRegistrationStart, onRegistrationEnd, onSwitch, onLogout, loading }: { authenticated: boolean; tasks: Segment[]; drafts: Record<string, string>; onDraft: (key: string, text: string) => void; selectedTaskId: string | null; onSelect: (id: string) => void; onSubmit: (id: string, text: string, expectedRevision: number) => Promise<void>; onClaim: () => Promise<Segment[]>; onRegistered: () => void; onRegistrationStart: () => void; onRegistrationEnd: () => void; onSwitch: () => void; onLogout: () => void; loading: boolean }) {
+function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId, onSelect, onSubmit, onClaim, onRegistered, onRegistrationStart, onRegistrationEnd, onSwitch, onLogout, loading, isDoctor, channel }: { authenticated: boolean; tasks: Segment[]; drafts: Record<string, string>; onDraft: (key: string, text: string) => void; selectedTaskId: string | null; onSelect: (id: string) => void; onSubmit: (id: string, text: string, expectedRevision: number) => Promise<void>; onClaim: () => Promise<Segment[]>; onRegistered: () => void; onRegistrationStart: () => void; onRegistrationEnd: () => void; onSwitch: () => void; onLogout: () => void; loading: boolean; isDoctor: boolean; channel: WorkspaceChannel }) {
   const [view, setView] = useState<'work' | 'results'>('work')
   const [showProfile, setShowProfile] = useState(false)
   const [registered, setRegistered] = useState(() => localStorage.getItem('zk_registered') === '1')
@@ -201,7 +206,7 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
   const editable = taskEditable(task)
   const closed = !!task.closed
   const storedUser = (() => { try { return JSON.parse(localStorage.getItem('zk_user') || 'null') as { realName?: string; name?: string } | null } catch { return null } })()
-  const displayName = liveApi ? storedUser?.realName || storedUser?.name || '译者' : '林晓雯'
+  const displayName = liveApi ? storedUser?.realName || storedUser?.name || (isDoctor ? '医生' : '译者') : (isDoctor ? '医生协作者' : '林晓雯')
   const completedToday = liveApi ? tasks.filter((item) => item.status === '已采纳' || item.completed > 0).length : 6
   const taskGoal = liveApi ? tasks.length : 8
   const progressPercent = taskGoal ? Math.min(100, Math.round((completedToday / taskGoal) * 100)) : 0
@@ -274,6 +279,7 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
     <div className="mobile-topbar">
       <Brand compact />
       <div className="top-actions">
+        {isDoctor && <span className="wechat-entry-chip" title={channel === 'wechat-mini-program' ? '微信小程序入口' : channel === 'wechat-public-account' ? '微信公众号入口' : '医生端网页入口'}><ExternalLink size={13} />医生端</span>}
         <button className="icon-button subtle" onClick={() => setShowProfile((v) => !v)} aria-label="个人中心"><span className="avatar avatar-small">{displayName.slice(0, 1)}</span></button>
         <button className="icon-button subtle" onClick={onSwitch} aria-label="切换后台"><Settings2 size={19} /></button>
       </div>
@@ -282,7 +288,7 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
     <main className="translator-content">
       <div className="translator-view-tabs" aria-label="我的工作区"><button className={view === 'work' ? 'active' : ''} aria-pressed={view === 'work'} onClick={() => setView('work')}>翻译任务</button><button className={view === 'results' ? 'active' : ''} aria-pressed={view === 'results'} onClick={() => setView('results')}>我的数据与审核结果{tasks.some((item) => item.reviewStatus === 'returned' && !item.closed) && <i />}</button></div>
       {view === 'results' ? <TaskResults tasks={tasks} onOpen={(id) => { onSelect(id); setView('work'); setTaskError('') }} /> : <>
-      <div className="welcome-line"><div><p className="eyebrow">{todayLabel}</p><h1>早上好，{displayName} <span>👋</span></h1></div><div className="streak"><span>✦</span><b>{liveApi ? '我的任务' : '连续 7 天'}</b><small>{liveApi ? `${completedToday} 个任务已提交` : '+12 积分'}</small></div></div>
+      <div className="welcome-line"><div><p className="eyebrow">{isDoctor ? '医生协作入口 · ' : ''}{todayLabel}</p><h1>{isDoctor ? '欢迎进入医生端' : `早上好，${displayName}`} <span>👋</span></h1>{isDoctor && <p className="entry-description">从微信菜单进入，登录后即可领取分配给你的翻译任务。</p>}</div><div className="streak"><span>✦</span><b>{liveApi ? '我的任务' : '连续 7 天'}</b><small>{liveApi ? `${completedToday} 个任务已提交` : '+12 积分'}</small></div></div>
       <section className="progress-card">
         <div className="progress-heading"><div><span className="overline">{liveApi ? '按任务去重统计' : '今日任务'}</span><strong>累计提交</strong></div><b>{completedToday} <i>/ {taskGoal} 个任务</i></b></div>
         <div className="progress-track"><span style={{ width: `${progressPercent}%` }} /></div>
@@ -313,8 +319,8 @@ function TranslatorView({ authenticated, tasks, drafts, onDraft, selectedTaskId,
       </>}
     </main>
     <nav className="bottom-nav"><button className={view === 'work' ? 'active' : ''} onClick={() => setView('work')}><ClipboardCheck size={20} /><span>翻译任务</span></button><button className={view === 'results' ? 'active' : ''} onClick={() => setView('results')}><BarChart3 size={20} /><span>我的数据</span></button></nav>
-    {!registered && <div className="register-banner"><span>注册志愿者后可领取翻译任务</span><button onClick={() => setShowRegister(true)}>立即注册</button></div>}
-    {showRegister && <div className="modal-backdrop"><div className="modal register-modal"><div className="modal-head"><div><h3>注册志愿者</h3><p>{registrationMode === 'open' ? '填写参与资料即可注册，也可以稍后完善。' : '参与资料用于资格核验与后续结算，请完整填写。'}</p></div><button disabled={registering} onClick={() => setShowRegister(false)}><X size={19} /></button></div><div className="form-field"><label>姓名{registrationMode === 'open' && '（可选）'}</label><input value={realName} onChange={(e) => setRealName(e.target.value)} placeholder="请输入姓名" /></div><div className="form-field"><label>手机号{registrationMode === 'open' && '（可选）'}</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="请输入手机号" inputMode={registrationMode === 'open' ? 'text' : 'tel'} /></div><div className="form-field"><label>身份证号{registrationMode === 'open' && '（可选）'}</label><input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="请输入身份证号" /></div><div className="form-field"><label>银行卡号{registrationMode === 'open' && '（可选）'}</label><input value={bankCardNo} onChange={(e) => setBankCardNo(e.target.value)} placeholder="请输入收款银行卡号" inputMode={registrationMode === 'open' ? 'text' : 'numeric'} /></div>{registrationConfigError && <p className="form-error" role="alert">{registrationConfigError}<button className="text-button" onClick={() => setRegistrationAttempt((value) => value + 1)}>重新加载</button></p>}{registerError && <p className="form-error">{registerError}</p>}<div className="modal-actions"><button className="outline-button" disabled={registering} onClick={() => setShowRegister(false)}>取消</button><button className="primary-button" disabled={registering || !registrationMode || !!registrationConfigError} onClick={() => void completeRegister()}>{registering ? '注册中…' : '完成注册'}</button></div></div></div>}
+    {!registered && <div className="register-banner"><span>{isDoctor ? '注册医生协作者后可领取翻译任务' : '注册志愿者后可领取翻译任务'}</span><button onClick={() => setShowRegister(true)}>立即注册</button></div>}
+    {showRegister && <div className="modal-backdrop"><div className="modal register-modal"><div className="modal-head"><div><h3>{isDoctor ? '注册医生协作者' : '注册志愿者'}</h3><p>{registrationMode === 'open' ? '填写参与资料即可注册，也可以稍后完善。' : '参与资料用于资格核验与后续结算，请完整填写。'}</p></div><button disabled={registering} onClick={() => setShowRegister(false)}><X size={19} /></button></div><div className="form-field"><label>姓名{registrationMode === 'open' && '（可选）'}</label><input value={realName} onChange={(e) => setRealName(e.target.value)} placeholder="请输入姓名" /></div><div className="form-field"><label>手机号{registrationMode === 'open' && '（可选）'}</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="请输入手机号" inputMode={registrationMode === 'open' ? 'text' : 'tel'} /></div><div className="form-field"><label>身份证号{registrationMode === 'open' && '（可选）'}</label><input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="请输入身份证号" /></div><div className="form-field"><label>银行卡号{registrationMode === 'open' && '（可选）'}</label><input value={bankCardNo} onChange={(e) => setBankCardNo(e.target.value)} placeholder="请输入收款银行卡号" inputMode={registrationMode === 'open' ? 'text' : 'numeric'} /></div>{registrationConfigError && <p className="form-error" role="alert">{registrationConfigError}<button className="text-button" onClick={() => setRegistrationAttempt((value) => value + 1)}>重新加载</button></p>}{registerError && <p className="form-error">{registerError}</p>}<div className="modal-actions"><button className="outline-button" disabled={registering} onClick={() => setShowRegister(false)}>取消</button><button className="primary-button" disabled={registering || !registrationMode || !!registrationConfigError} onClick={() => void completeRegister()}>{registering ? '注册中…' : '完成注册'}</button></div></div></div>}
   </div>
 }
 

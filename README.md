@@ -52,7 +52,7 @@ BIGMODEL_KEY_TYPE=coding_plan
 BIGMODEL_API_KEY=由密钥管理系统注入
 ```
 
-模型繁忙、429、5xx 和超时会自动按 Retry-After 和指数退避重试；每个通道可以使用 `OPENAI_COMPATIBLE_*`、`BIGMODEL_*` 或 `MINIMAX_*` 覆盖重试、超时、并发和冷却参数。主通道达到重试上限会进入短暂熔断并在同一次请求中自动切换备用通道，人工翻译仍可继续；部署前分别执行 `deploy/scripts/check-model.sh` 验证两个通道。
+模型繁忙、429、5xx 和超时会自动按 Retry-After 和指数退避重试；每个通道可以使用 `OPENAI_COMPATIBLE_*`、`BIGMODEL_*` 或 `MINIMAX_*` 覆盖重试、超时、并发和冷却参数。主通道达到重试上限会进入短暂熔断并在同一次请求中自动切换备用通道，人工翻译仍可继续。Sinohealth 授权成功后，部署使用 `OPENAI_COMPATIBLE_KEY_TYPE=platform_api`、`OPENAI_COMPATIBLE_BASE_URL=https://provider.example.invalid/v2/openai/completions` 和 `OPENAI_COMPATIBLE_MODEL=plmf/glm-5.3-flash`；部署前执行 `deploy/scripts/check-model.sh`，检查结果中的 `ok`、`provider` 和 `model`。
 
 ## 生产部署
 
@@ -95,4 +95,13 @@ IMAGE_BUNDLE_TAG=0.2.4 ENV_FILE=.env bash scripts/start-offline.sh
 
 ## 微信接入
 
-H5 可放到公众号菜单或网页授权页；小程序接入时，把微信 `openid` 绑定到注册账号，再替换会话层即可，任务单元、审核和报表接口保持不变。实名、短信和银行卡四要素接口保留为独立适配层，待供应商接口申请完成后接入。
+医生端直接复用移动 H5 的志愿者工作区，公众号菜单和小程序 `web-view` 都指向同一个 HTTPS 地址：
+
+```text
+https://<H5业务域名>/doctor?entry=doctor&channel=public-account
+https://<H5业务域名>/doctor?entry=doctor&channel=mini-program
+```
+
+公众号后台把 `<H5业务域名>` 加入网页授权域名后，在“自定义菜单”创建“跳转网页”菜单；小程序后台把同一域名加入“业务域名”，由 `web-view` 打开第二个地址。域名必须有有效 HTTPS 证书，不能使用 IP、localhost、临时域名或非 443 端口。`workspace=translator` 是医生端入口，管理员后台仍使用独立的 `?workspace=admin`，不要把后台地址放进微信菜单。
+
+当前 H5 使用服务端 HttpOnly Cookie 完成注册和登录，微信入口无需把身份证号、银行卡号或 `session_key` 放入 URL。后续接入公众号 OAuth 或小程序 `wx.login` 时，在服务端将 `openid/unionid` 绑定现有译者账号，再创建同一会话；任务、审核和报表接口无需改动。完整的域名白名单、反向代理和真机验收步骤见 [deploy/README.md](deploy/README.md)。

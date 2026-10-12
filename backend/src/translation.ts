@@ -258,9 +258,17 @@ function extractText(payload: unknown): { text: string } | Failure {
   const choices = body?.choices;
   const choice = Array.isArray(choices) ? record(choices[0]) : undefined;
   const message = record(choice?.message);
-  if (choice?.finish_reason === 'length') return { error: 'provider_truncated_response', retryable: false };
-  if (choice?.finish_reason === 'content_filter' || message?.refusal) return { error: 'provider_content_filtered', retryable: false };
-  if (choice?.finish_reason !== 'stop' || !message || typeof message.content !== 'string' || (message.role && message.role !== 'assistant')) {
+  // Sinohealth's OpenAI-compatible endpoint serializes OpenAI's snake_case
+  // finish_reason as camelCase finishReason. Accept both forms so an
+  // authorized response is not misclassified as provider_invalid_response.
+  const finishReason = typeof choice?.finish_reason === 'string'
+    ? choice.finish_reason
+    : typeof choice?.finishReason === 'string'
+      ? choice.finishReason
+      : undefined;
+  if (finishReason === 'length') return { error: 'provider_truncated_response', retryable: false };
+  if (finishReason === 'content_filter' || finishReason === 'contentFilter' || message?.refusal) return { error: 'provider_content_filtered', retryable: false };
+  if (finishReason !== 'stop' || !message || typeof message.content !== 'string' || (message.role && message.role !== 'assistant')) {
     return { error: 'provider_invalid_response', retryable: true };
   }
   const text = message.content.replace(/<think\s*>[\s\S]*?<\/think\s*>/gi, '').trim();

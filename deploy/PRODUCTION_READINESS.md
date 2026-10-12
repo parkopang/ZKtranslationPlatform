@@ -29,13 +29,13 @@
 - OpenAI 兼容适配器：验证 URL、模型、Bearer 鉴权、HTTP 503 busy 重试、响应脱敏。
 - MySQL：外网维护地址 `SELECT 1` 通过，空库自动建表后执行插入/读取/删除往返通过；当前本机不在内网，`replace-with-mysql-host:3306` 超时符合网络隔离预期。
 - COS：HeadBucket、上传、签名 URL 和测试对象清理通过。
-- 真实模型：网关可达并返回 HTTP 200，但服务端对 `plmf/glm-5.3-flash` 返回业务错误“智能体未授权或不可用”。这不是代码重试问题，需服务商开通模型或确认模型标识后重新执行现场验收。
+- 真实模型：Sinohealth 已完成 `plmf/glm-5.3-flash` 授权时，现场验收必须返回 `ok: true`、`provider: openai_compatible` 和 `model: plmf/glm-5.3-flash`。若仍返回“智能体未授权或不可用”，先检查 Key 是否注入到运行中的 backend 容器、模型标识和端点路径，再联系服务商；不要用 BigModel 的 Coding Plan Key 调用 Sinohealth 端点。
 
 ## 仍需现场确认
 
-- 模型服务商是否已给该 Key 开通 `plmf/glm-5.3-flash`；如果后台模型标识不同，只更新 `OPENAI_COMPATIBLE_MODEL`，不要改代码绕过权限。
+- 在部署机使用最新 Key 重新执行 `scripts/check-model.sh`，确认 `plmf/glm-5.3-flash` 返回成功；如果后台模型标识不同，只更新 `OPENAI_COMPATIBLE_MODEL`，不要改代码绕过权限。
 - 机房容器到 `replace-with-mysql-host`、`replace-with-redis-host`、COS 和模型网关的防火墙/白名单、DNS、TLS 和出口代理。
-- 微信公众号网页授权、小程序登录、HTTPS 证书、域名白名单和外层限流。
+- 微信公众号自定义菜单跳转网页、小程序 `web-view` 业务域名、HTTPS 证书、Cookie 保持、真机注册/登录和外层限流；医生端链接统一使用 `https://<H5业务域名>/?workspace=translator`。
 - PII 密钥托管、轮换、数据库最小权限、COS 私有读写策略、备份加密和恢复负责人。
 
 ## 10 人试跑容量边界
