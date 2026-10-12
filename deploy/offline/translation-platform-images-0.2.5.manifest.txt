@@ -1,0 +1,5 @@
+# generated_at=2026-10-12T01:24:52Z
+# source_env=.env
+jszt-tcr.tencentcloudcr.com/psp/translation-platform-backend:0.2.5@sha256:422d098744f3822fae7d8a2f9eb1eff04ee3d6487b970c4199ee8f79afba5a4f	size_bytes=101815253	repo_digests=jszt-tcr.tencentcloudcr.com/psp/translation-platform-backend@sha256:422d098744f3822fae7d8a2f9eb1eff04ee3d6487b970c4199ee8f79afba5a4f
+jszt-tcr.tencentcloudcr.com/psp/translation-platform-frontend:0.2.5@sha256:ef17aa5a5c5a96659de27e2d3a05d07f89aa7ba7946bd4142327f16c7866a1e7	size_bytes=21087318	repo_digests=jszt-tcr.tencentcloudcr.com/psp/translation-platform-frontend@sha256:ef17aa5a5c5a96659de27e2d3a05d07f89aa7ba7946bd4142327f16c7866a1e7
+jszt-tcr.tencentcloudcr.com/psp/translation-platform-nginx:0.2.5@sha256:5d30f710cd61b8d09cb61f4ce39f7a577f77dbbddd7eaf48744ee2379dc678eb	size_bytes=20976082	repo_digests=jszt-tcr.tencentcloudcr.com/psp/translation-platform-nginx@sha256:5d30f710cd61b8d09cb61f4ce39f7a577f77dbbddd7eaf48744ee2379dc678eb

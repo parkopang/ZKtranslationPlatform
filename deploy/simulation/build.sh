@@ -7,6 +7,6 @@ root="$(cd "$dir/../.." && pwd)"
 # change, build new release base images with the normal project Dockerfiles first.
 npm --prefix "$root/backend" run build
 npm --prefix "$root/frontend" run build
-docker buildx build --platform linux/amd64 --provenance=false --sbom=false --network none --load -f "$dir/Dockerfile.backend-runtime" -t translation-platform/test-backend:0.2.4 "$root"
-docker buildx build --platform linux/amd64 --provenance=false --sbom=false --network none --load -f "$dir/Dockerfile.frontend-runtime" -t translation-platform/test-frontend:0.2.4 "$root"
-docker buildx build --platform linux/amd64 --provenance=false --sbom=false --network none --load -f "$dir/Dockerfile.nginx" -t translation-platform/test-nginx:0.2.4 "$dir"
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false --network none --load -f "$dir/Dockerfile.backend-runtime" -t translation-platform/test-backend:0.2.5 "$root"
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false --network none --load -f "$dir/Dockerfile.frontend-runtime" -t translation-platform/test-frontend:0.2.5 "$root"
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false --network none --load -f "$dir/Dockerfile.nginx" -t translation-platform/test-nginx:0.2.5 "$dir"

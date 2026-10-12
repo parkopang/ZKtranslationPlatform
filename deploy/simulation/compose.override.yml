@@ -1,6 +1,6 @@
 services:
   backend:
-    image: translation-platform/test-backend:0.2.4
+    image: translation-platform/test-backend:0.2.5
     environment:
       NODE_OPTIONS: --import /simulation/network.mjs
       SIMULATION_ENV: "true"
@@ -22,8 +22,8 @@ services:
       redis: { condition: service_healthy }
       minio-init: { condition: service_completed_successfully }
   frontend:
-    image: translation-platform/test-frontend:0.2.4
+    image: translation-platform/test-frontend:0.2.5
   nginx:
-    image: translation-platform/test-nginx:0.2.4
+    image: translation-platform/test-nginx:0.2.5
     ports: !override
       - "127.0.0.1:18082:80"
