@@ -85,6 +85,23 @@ ENV_FILE=.env bash scripts/check-model.sh
 
 `/api/readyz` 会执行数据库查询，并确认模型配置、Redis worker 和对象存储配置；它不会调用模型接口。`check-model.sh` 才会使用真实 Key 对一条合成短句调用模型。
 
+### 2.1 部署完成后如何打开首页
+
+按下面顺序验收，不要直接把管理员地址发给志愿者：
+
+1. **确认容器和网关正常**：执行 `docker compose --env-file .env ps`，`backend`、`frontend`、`nginx` 都应为 `healthy`；再执行 `ENV_FILE=.env bash scripts/healthcheck.sh`。
+2. **打开生产首页**：访问 `https://<H5业务域名>/`。如果暂时没有域名而是通过端口验收，访问 `http://<服务器IP>:<HTTP_PORT>/`（默认端口为 `80`）。生产根路径直接进入志愿者翻译工作区，首次使用者点击注册后填写资料。
+3. **进入管理员后台**：从首页右上角的设置/管理入口点击“切换后台”，在弹窗中输入 `.env` 里的 `ADMIN_KEY`。登录成功后地址会变为 `/?workspace=admin`，随后进入“文章管理”“翻译审核”“数据报表”和“微信入口”。直接打开 `/?workspace=admin` 只能复用已经建立的管理员会话，首次部署应先从首页完成密钥登录。
+4. **配置微信入口**：进入“微信入口”，由管理员填写入口名称、唯一编码和渠道类型，保存后复制页面生成的链接。入口编码启用后保持不变；需要换入口时新建编码并停用旧入口。
+5. **发布给志愿者/医生**：公众号菜单使用 `/doctor?entry=<入口编码>&channel=public-account`，小程序 `web-view` 使用 `/doctor?entry=<入口编码>&channel=mini-program`。入口必须已经启用，且链接需要使用 HTTPS 业务域名。
+6. **完成一次小范围验收**：注册一个测试志愿者，确认后台志愿者列表能看到对应来源；管理员导入一篇 TXT/Word，分配 1–2 个任务，提交后在审核页采纳或退回，最后检查报表和入口筛选结果。
+
+截图中的“协作工作空间”是本机模拟环境的首页，访问地址是 `http://localhost:18082/simulation/`，只用于部署前体验和验收；生产镜像的首页是上面的业务域名根路径，不会出现模拟环境的快捷入口卡片。
+
+![本机模拟环境首页](assets/screenshots/01-local-home.png)
+
+如果首页打不开，按顺序检查：`curl -I https://<H5业务域名>/`、`curl -fsS https://<H5业务域名>/api/health`、负载均衡到 Nginx 的 80 端口、域名 DNS/HTTPS 证书，以及浏览器是否被旧的管理员或志愿者 Cookie 影响。不要用 `localhost`、内网 IP 或带端口的地址配置公众号和小程序。
+
 ## 3. 模型繁忙与重试
 
 所有模型调用共享并发上限，默认 `LLM_MAX_CONCURRENCY=2`。HTTP 429、5xx、超时、网关返回的 busy/overload/capacity 会遵守 `Retry-After`，按通道自己的 `*_RETRY_ATTEMPTS`（未设置则使用 `LLM_RETRY_ATTEMPTS`）、指数退避和总超时预算自动重试；鉴权、余额、模型未授权和参数错误会停止当前通道重试并转入备用通道。Redis 任务也有持久化重试时间，重启后会恢复，不会把原文写成伪译文。
@@ -166,7 +183,7 @@ ENV_FILE=.env bash scripts/healthcheck.sh
 管理员进入“入口管理”后，为每个需要接入的平台创建一条记录：
 
 1. 填写入口名称（例如“华南医学公众号”“医生服务小程序”）和渠道类型（公众号或小程序）。入口名称会显示在志愿者注册页和后台筛选器中。
-2. 保存后由系统生成唯一入口编码和 HTTPS 跳转地址。管理员可复制地址、查看最近访问/注册数量、设置启用或停用；入口编码一经使用不要修改。
+2. 保存后页面按入口编码生成 HTTPS 跳转地址。入口编码由管理员填写，启用后不要修改；管理员可以复制地址、设置启用或停用。当前版本不提供访问量统计，需要在报表或网关监控中查看业务数据。
 3. 将公众号入口地址配置到该公众号的“自定义菜单 → 跳转网页”，将小程序入口地址配置到该小程序的 `web-view` 页面。多个公众号或小程序可以共用 H5 域名，但必须使用各自的入口地址。
 4. 停用入口后，新访问会看到入口不可用提示且不能注册；已注册志愿者、既有任务和历史译文继续保留。需要换域名时创建新入口并重新发布菜单，不要复用旧编码。
 
@@ -177,11 +194,11 @@ ENV_FILE=.env bash scripts/healthcheck.sh
 医生端链接格式为：
 
 ```text
-https://<H5业务域名>/doctor?entry=<管理员生成的公众号入口编码>&channel=public-account
-https://<H5业务域名>/doctor?entry=<管理员生成的小程序入口编码>&channel=mini-program
+https://<H5业务域名>/doctor?entry=<公众号入口编码>&channel=public-account
+https://<H5业务域名>/doctor?entry=<小程序入口编码>&channel=mini-program
 ```
 
-`workspace=translator` 必须保留。`entry` 必须是后台已创建且启用的入口编码，`channel` 必须和入口记录匹配；未知、停用或渠道不匹配的链接不能进入注册流程。管理员后台使用 `?workspace=admin`，不要把管理员地址挂到公众号或小程序菜单。
+`/doctor` 路径会进入医生/志愿者工作区。`entry` 必须是后台已创建且启用的入口编码，`channel` 必须和入口记录匹配；未知、停用或渠道不匹配的链接不能进入注册流程。管理员后台使用 `?workspace=admin`，不要把管理员地址挂到公众号或小程序菜单。
 
 ### 公众号自定义菜单
 
@@ -189,7 +206,7 @@ https://<H5业务域名>/doctor?entry=<管理员生成的小程序入口编码>&
 2. 在“内容与互动 → 自定义菜单”新增菜单，类型选择“跳转网页”，页面地址填：
 
    ```text
-   https://<H5业务域名>/?workspace=translator&entry=<公众号入口编码>&channel=public-account
+   https://<H5业务域名>/doctor?entry=<公众号入口编码>&channel=public-account
    ```
 
 3. 发布菜单后，用微信内置浏览器打开链接，确认注册页、登录态和任务列表均能加载；不要使用 `http://`、内网 IP 或带端口的地址。
@@ -202,7 +219,7 @@ https://<H5业务域名>/doctor?entry=<管理员生成的小程序入口编码>&
 2. 小程序页面使用 `web-view` 打开同一医生端地址，推荐通过页面参数传入完整 URL：
 
    ```text
-   https://<H5业务域名>/?workspace=translator&entry=<小程序入口编码>&channel=mini-program
+   https://<H5业务域名>/doctor?entry=<小程序入口编码>&channel=mini-program
    ```
 
 3. 发布前在真机验证：首次注册、刷新后会话仍在、领取任务、提交译文和审核结果刷新均正常。H5 与 API 使用同源 `/api`，外层反向代理要保留 `Host`、`X-Forwarded-Proto: https` 和 Cookie，不要把 API 改成跨域裸 IP。
@@ -214,7 +231,7 @@ https://<H5业务域名>/doctor?entry=<管理员生成的小程序入口编码>&
 - 外层负载均衡只允许 HTTPS，回源到 Nginx 80 端口；`CORS_ORIGIN` 设置为实际 H5 域名，公众号和小程序不使用 `*`。
 - 微信入口只展示医生/志愿者工作区；管理员继续使用单独的后台入口和管理员会话。
 - 入口编码只能作为来源定位符，不能替代登录和微信身份校验。生产接入 OAuth/`wx.login` 后，应在服务端把 `openid/unionid` 与入口绑定，再创建 HttpOnly Cookie；不要相信前端自行提交的入口名称、渠道或 `openid`。
-- 发布前检查 `curl -I https://<H5业务域名>/?workspace=translator` 返回 200，并在微信真机确认没有证书、域名白名单或 Cookie 阻断提示。
+- 发布前检查 `curl -I https://<H5业务域名>/` 和 `curl -I https://<H5业务域名>/doctor?entry=<入口编码>&channel=<渠道>` 返回 200，并在微信真机确认没有证书、域名白名单或 Cookie 阻断提示。
 
 ### 多入口验收用例
 
